@@ -1,0 +1,30 @@
+#!/bin/bash
+
+function fatal() {
+  echo "error: $@" 1>&2;
+  exit 1;
+}
+
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 [Binary program]";
+  exit 1;
+fi
+
+[ -r "$1" ] || fatal "invalid binary program: $1";
+
+os="$(uname -s)";
+if [ "$os" == "Darwin" ]; then
+  otool -V -s __TEXT __text "$1" | \
+    egrep "^[[:digit:]abcdef]+[[:space:]]" |
+    cut -f1 -d"#" | \
+    sed -e "s/^[[:space:]]*0*/0x/" -e "s/[[:space:]]*$//" | \
+    awk '{printf "%s:",tolower($1); for (i=2;i<NF;++i) printf "%s ",$i;printf "%s\n",$i}'
+elif [ "$os" == "Linux" ]; then
+  objdump -d --prefix-addresses "$1" | \
+    egrep "^[[:digit:]abcdef]+[[:space:]]" | \
+    cut -f1 -d"#" | \
+    sed -e "s/^[[:space:]]*0*/0x/" -e "s/[[:space:]]*$//" | \
+    awk '{printf "%s:",tolower($1); for (i=3;i<NF;++i) printf "%s ",$i;printf "%s\n",$i}'
+else
+  fatal "Unsupported system: $os";
+fi
