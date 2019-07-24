@@ -747,6 +747,7 @@ void* LPG_(smart_list_tail)(SmartList* slist);
 void LPG_(smart_list_set)(SmartList* slist, Int index, void* value);
 void LPG_(smart_list_del)(SmartList* slist, Int index, Bool remove_contents);
 void LPG_(smart_list_add)(SmartList* slist, void* value);
+void LPG_(smart_list_copy)(SmartList* dst, SmartList* src);
 void LPG_(smart_list_forall)(SmartList* slist, Bool (*func)(void*, void*), void* arg);
 Bool LPG_(smart_list_contains)(SmartList* slist, void* value, Bool (*cmp)(void*, void*));
 Float LPG_(smart_list_growth_rate)(SmartList* slist);

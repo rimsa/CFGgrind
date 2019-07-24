@@ -82,6 +82,7 @@ void grow_smart_list(SmartList* slist) {
 	{
 		Int new_size = (Int) (slist->size * slist->growth_rate);
 		LPG_ASSERT(new_size > slist->size);
+		LPG_DEBUG(3, "%u\n", new_size);
 
 		slist->data->list = LPG_REALLOC("lg.smartlist.gsl.1",
 				slist->data->list, (new_size * sizeof(void*)));
@@ -396,6 +397,21 @@ void LPG_(smart_list_add)(SmartList* slist, void* value) {
 	LPG_ASSERT(snode->list[slist->elements] == 0);
 	snode->list[slist->elements++] = value;
 #endif
+}
+
+void LPG_(smart_list_copy)(SmartList* dst, SmartList* src) {
+	Int i, size;
+
+	LPG_ASSERT(dst != 0);
+	LPG_ASSERT(src != 0);
+
+	size = LPG_(smart_list_count)(src);
+	for (i = 0; i < size; i++)
+		LPG_(smart_list_set)(dst, i, LPG_(smart_list_at)(src, i));
+
+	size = LPG_(smart_list_count)(dst);
+	for (; i < size; i++)
+		LPG_(smart_list_set)(dst, i, 0);
 }
 
 void LPG_(smart_list_forall)(SmartList* slist, Bool (*func)(void*, void*), void* arg) {
