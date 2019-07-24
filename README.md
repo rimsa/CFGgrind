@@ -12,7 +12,7 @@ To build CFGgrind, first download and unpack valgrind (3.15.0):
 Then, enter directory and clone CFGgrind github repository. Apply patch to add the tool in the compile chain.
 
     $ cd valgrind-3.15.0
-    $ git clone https://github.com/rimsa/CFGgrind.git
+    $ git clone https://github.com/rimsa/CFGgrind.git cfggrind
     $ patch -p1 < cfggrind/cfggrind.patch
 
 Build valgrind with CFGgrind:
