@@ -205,11 +205,72 @@ static Bool search_runtime_resolve(obj_node* obj)
 /* Object hash table, fixed */
 static obj_node* obj_table[N_OBJ_ENTRIES];
 
-void LPG_(init_obj_table)()
-{
-    Int i;
-    for (i = 0; i < N_OBJ_ENTRIES; i++)
-	obj_table[i] = 0;
+void LPG_(init_obj_table)() {
+	Int i;
+	for (i = 0; i < N_OBJ_ENTRIES; i++)
+		obj_table[i] = 0;
+}
+
+static
+void delete_fn_node(fn_node* fn_n) {
+	LPG_ASSERT(fn_n != 0);
+
+	LPG_FREE(fn_n->name);
+	LPG_DATA_FREE(fn_n, sizeof(fn_node));
+}
+
+static
+void delete_file_node(file_node* f_n) {
+	Int j;
+
+	LPG_ASSERT(f_n != 0);
+
+	LPG_FREE(f_n->name);
+	for (j = 0; j < N_FN_ENTRIES; j++) {
+		fn_node* fn_n = f_n->fns[j];
+		while (fn_n) {
+			fn_node* fn_n_next = fn_n->next;
+			delete_fn_node(fn_n);
+			fn_n = fn_n_next;
+		}
+	}
+
+	LPG_DATA_FREE(f_n, sizeof(file_node));
+}
+
+static
+void delete_obj_node(obj_node* obj) {
+	Int i;
+
+	LPG_ASSERT(obj != 0);
+	LPG_ASSERT(obj->name != 0);
+
+	LPG_FREE(obj->name);
+	for (i = 0; i < N_FILE_ENTRIES; i++) {
+		file_node* f_n = obj->files[i];
+		while (f_n) {
+			file_node* f_n_next = f_n->next;
+			delete_file_node(f_n);
+			f_n = f_n_next;
+		}
+	}
+
+	LPG_DATA_FREE(obj, sizeof(obj_node));
+}
+
+void LPG_(destroy_obj_table)() {
+	Int i;
+
+	for (i = 0; i < N_OBJ_ENTRIES; i++) {
+		obj_node* obj = obj_table[i];
+		while (obj) {
+			obj_node* next = obj->next;
+			delete_obj_node(obj);
+			obj = next;
+		}
+
+		obj_table[i] = 0;
+	}
 }
 
 #define HASH_CONSTANT   256
@@ -233,7 +294,8 @@ obj_node* new_obj_node(DebugInfo* di, obj_node* next)
 
    obj = (obj_node*) LPG_MALLOC("cl.fn.non.1", sizeof(obj_node));
    obj->name  = LPG_STRDUP("cl.fn.non.2",
-		   di ? VG_(DebugInfo_get_filename)(di) : anonymous_obj);
+		   	   	   di ? VG_(DebugInfo_get_filename)(di) : anonymous_obj);
+
    for (i = 0; i < N_FILE_ENTRIES; i++) {
       obj->files[i] = NULL;
    }
@@ -604,6 +666,11 @@ void LPG_(init_fn_array)(fn_array* a)
                                 a->size * sizeof(UInt));
   for(i=0;i<a->size;i++)
     a->array[i] = 0;
+}
+
+void LPG_(destroy_fn_array)(fn_array* a) {
+	LPG_ASSERT(a != 0);
+	LPG_FREE(a->array);
 }
 
 void LPG_(copy_current_fn_array)(fn_array* dst)

@@ -35,8 +35,7 @@
 /* BB hash, resizable */
 bb_hash bbs;
 
-void LPG_(init_bb_hash)()
-{
+void LPG_(init_bb_hash)() {
    Int i;
 
    bbs.size    = 8437;
@@ -44,7 +43,34 @@ void LPG_(init_bb_hash)()
    bbs.table = (BB**) LPG_MALLOC("cl.bb.ibh.1",
                                  bbs.size * sizeof(BB*));
 
-   for (i = 0; i < bbs.size; i++) bbs.table[i] = NULL;
+   for (i = 0; i < bbs.size; i++)
+	   bbs.table[i] = NULL;
+}
+
+void LPG_(destroy_bb_hash)() {
+	Int i;
+	Int size;
+
+	for (i = 0; i < bbs.size; i++) {
+		BB* bb = bbs.table[i];
+		while (bb) {
+			BB* next = bb->next;
+
+			size = sizeof(BB)
+				+ bb->instr_count * sizeof(InstrInfo)
+				+ (bb->cjmp_count+1) * sizeof(CJmpInfo)
+				+ bb->groups_count * sizeof(InstrGroupInfo);
+			LPG_DATA_FREE(bb, size);
+
+			bb = next;
+			bbs.entries--;
+		}
+	}
+
+	LPG_ASSERT(bbs.entries == 0);
+
+	LPG_FREE(bbs.table);
+	bbs.table = 0;
 }
 
 bb_hash* LPG_(get_bb_hash)()
@@ -346,8 +372,7 @@ void LPG_(delete_bb)(Addr addr)
 	    + bb->instr_count * sizeof(InstrInfo)
 	    + (bb->cjmp_count+1) * sizeof(CJmpInfo)
 	    + bb->groups_count * sizeof(InstrGroupInfo);
-	VG_(memset)( bb, 0xAA, size );
-	LPG_FREE(bb);
+	LPG_DATA_FREE(bb, size);
 	return;
     }
     LPG_DEBUG(3, "  delete_bb: BB in use, can not free!\n");

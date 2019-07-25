@@ -61,27 +61,27 @@ static exec_stack current_states;
 /* current running thread */
 ThreadId LPG_(current_tid);
 
-static thread_info** thread;
+static thread_info** threads;
 
 thread_info** LPG_(get_threads)()
 {
-  return thread;
+  return threads;
 }
 
 thread_info* LPG_(get_current_thread)()
 {
-  return thread[LPG_(current_tid)];
+  return threads[LPG_(current_tid)];
 }
 
-void LPG_(init_threads)()
-{
-    UInt i;
+void LPG_(init_threads)() {
+	UInt i;
 
-    thread = LPG_MALLOC("cl.threads.it.1", VG_N_THREADS * sizeof thread[0]);
+	threads = LPG_MALLOC("cl.threads.it.1", VG_N_THREADS * sizeof threads[0]);
 
-    for(i=0;i<VG_N_THREADS;i++)
-	thread[i] = 0;
-    LPG_(current_tid) = VG_INVALID_THREADID;
+	for(i=0;i<VG_N_THREADS;i++)
+		threads[i] = 0;
+
+	LPG_(current_tid) = VG_INVALID_THREADID;
 }
 
 /* switches through all threads and calls func */
@@ -90,9 +90,9 @@ void LPG_(forall_threads)(void (*func)(thread_info*))
   Int t, orig_tid = LPG_(current_tid);
 
   for(t=1;t<VG_N_THREADS;t++) {
-    if (!thread[t]) continue;
+    if (!threads[t]) continue;
     LPG_(switch_thread)(t);
-    (*func)(thread[t]);
+    (*func)(threads[t]);
   }
   LPG_(switch_thread)(orig_tid);
 }
@@ -119,6 +119,47 @@ thread_info* new_thread(void)
     return t;
 }
 
+static
+void delete_thread(thread_info* t) {
+	LPG_ASSERT(t != 0);
+
+	/* destroy data containers */
+	LPG_(destroy_bbcc_hash)(&(t->bbccs));
+	LPG_(destroy_fn_array)(&(t->fn_active));
+
+	/* destroy state */
+	LPG_(destroy_fn_stack)(&(t->fns));
+	LPG_(destroy_call_stack)(&(t->calls));
+	LPG_(destroy_exec_stack)(&(t->states));
+
+	LPG_DATA_FREE(t, sizeof(thread_info));
+}
+
+void LPG_(destroy_threads)() {
+	UInt i;
+
+	for (i = 0; i < VG_N_THREADS; i++) {
+		if (threads[i]) {
+			// Update the thread info for the current thread.
+			if (LPG_(current_tid) == i) {
+				LPG_(copy_current_exec_stack)(&(threads[i]->states));
+				LPG_(copy_current_call_stack)(&(threads[i]->calls));
+				LPG_(copy_current_fn_stack)(&(threads[i]->fns));
+
+				LPG_(copy_current_fn_array)(&(threads[i]->fn_active));
+				LPG_(copy_current_bbcc_hash)(&(threads[i]->bbccs));
+			}
+
+			delete_thread(threads[i]);
+			threads[i] = 0;
+		}
+	}
+
+	LPG_FREE(threads);
+	threads = 0;
+
+	LPG_(current_tid) = VG_INVALID_THREADID;
+}
 
 void LPG_(switch_thread)(ThreadId tid)
 {
@@ -128,7 +169,7 @@ void LPG_(switch_thread)(ThreadId tid)
 
   if (LPG_(current_tid) != VG_INVALID_THREADID) {    
     /* save thread state */
-    thread_info* t = thread[LPG_(current_tid)];
+    thread_info* t = threads[LPG_(current_tid)];
 
     LPG_ASSERT(t != 0);
 
@@ -150,9 +191,10 @@ void LPG_(switch_thread)(ThreadId tid)
     thread_info* t;
 
     /* load thread state */
+    if (threads[tid] == 0)
+      threads[tid] = new_thread();
 
-    if (thread[tid] == 0) thread[tid] = new_thread();
-    t = thread[tid];
+    t = threads[tid];
 
     /* current context (including signal handler contexts) */
     LPG_(set_current_exec_stack)( &(t->states) );
@@ -310,11 +352,26 @@ void LPG_(init_exec_stack)(exec_stack* es)
 {
   Int i;
 
+  LPG_ASSERT(es != 0);
+
   /* The first element is for the main thread */
   es->entry[0] = new_exec_state(0);
   for(i=1;i<MAX_SIGHANDLERS;i++)
     es->entry[i] = 0;
   es->sp = 0;
+}
+
+void LPG_(destroy_exec_stack)(exec_stack* es) {
+	Int i;
+
+	LPG_ASSERT(es != 0);
+
+	for (i = 0; i < MAX_SIGHANDLERS; i++) {
+		if (es->entry[i]) {
+			LPG_FREE(es->entry[i]);
+			es->entry[i] = 0;
+		}
+	}
 }
 
 void LPG_(copy_current_exec_stack)(exec_stack* dst)

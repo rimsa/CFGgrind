@@ -49,6 +49,11 @@ void LPG_(init_fn_stack)(fn_stack* s)
   s->bottom[0] = 0;
 }
 
+void LPG_(destroy_fn_stack)(fn_stack* s) {
+	LPG_ASSERT(s != 0);
+	LPG_FREE(s->bottom);
+}
+
 void LPG_(copy_current_fn_stack)(fn_stack* dst)
 {
   LPG_ASSERT(dst != 0);
@@ -69,8 +74,7 @@ void LPG_(set_current_fn_stack)(fn_stack* s)
 
 static cxt_hash cxts;
 
-void LPG_(init_cxt_table)()
-{
+void LPG_(init_cxt_table)() {
    Int i;
    
    cxts.size    = N_CXT_INITIAL_ENTRIES;
@@ -80,6 +84,26 @@ void LPG_(init_cxt_table)()
 
    for (i = 0; i < cxts.size; i++)
      cxts.table[i] = 0;
+}
+
+void LPG_(destroy_cxt_table)() {
+	Int i;
+
+	for (i = 0; i < cxts.size; i++) {
+		Context* cxt = cxts.table[i];
+		while (cxt) {
+			Context* next = cxt->next;
+			LPG_FREE(cxt);
+			cxt = next;
+
+			cxts.entries--;
+		}
+	}
+
+	LPG_ASSERT(cxts.entries == 0);
+
+	LPG_FREE(cxts.table);
+	cxts.table = 0;
 }
 
 /* double size of cxt table  */

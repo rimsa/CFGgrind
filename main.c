@@ -731,10 +731,12 @@ void finish(void) {
 	// Dump the CFG dot files.
 	LPG_(forall_cfg)(LPG_(dump_cfg), True);
 
-	LPG_(forall_cfg)(LPG_(delete_cfg), True);
-
-	// Remove instructions pool after everything.
+	LPG_(destroy_threads)();
 	LPG_(destroy_instrs_pool)();
+	LPG_(destroy_cfg_hash)();
+	LPG_(destroy_bb_hash)();
+	LPG_(destroy_cxt_table)();
+	LPG_(destroy_obj_table)();
 
 	if (VG_(clo_verbosity) == 0)
 		return;

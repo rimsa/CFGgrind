@@ -63,6 +63,12 @@ void LPG_(init_call_stack)(call_stack* s)
   }
 }
 
+void LPG_(destroy_call_stack)(call_stack* s) {
+	LPG_ASSERT(s != 0);
+
+	LPG_FREE(s->entry);
+}
+
 call_entry* LPG_(get_call_entry)(Int sp)
 {
   LPG_ASSERT(sp <= LPG_(current_call_stack).sp);

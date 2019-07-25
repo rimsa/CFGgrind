@@ -55,7 +55,7 @@
 
 /* Enable debug output */
 #define LPG_ENABLE_DEBUG	1
-#define LPG_DEBUG_MEM		0
+#define LPG_DEBUG_MEM	0
 
 #define LPG_ENABLE_PATH_CACHE
 
@@ -395,7 +395,7 @@ struct _file_node {
  * zero when object is unmapped (possible at dump time).
  */
 struct _obj_node {
-   const HChar* name;
+   HChar* name;
    UInt       last_slash_pos;
 
    Addr       start;  /* Start address of text segment mapping */
@@ -551,6 +551,7 @@ struct _thread_info {
 
 /* from bb.c */
 void LPG_(init_bb_hash)(void);
+void LPG_(destroy_bb_hash)(void);
 bb_hash* LPG_(get_bb_hash)(void);
 BB*  LPG_(get_bb)(Addr addr, IRSB* bb_in, Bool *seen_before);
 void LPG_(delete_bb)(Addr addr);
@@ -563,6 +564,7 @@ static __inline__ Addr bb_jmpaddr(BB* bb)
 
 /* from bbcc.c */
 void LPG_(init_bbcc_hash)(bbcc_hash* bbccs);
+void LPG_(destroy_bbcc_hash)(bbcc_hash* bbccs);
 void LPG_(copy_current_bbcc_hash)(bbcc_hash* dst);
 bbcc_hash* LPG_(get_current_bbcc_hash)(void);
 void LPG_(set_current_bbcc_hash)(bbcc_hash*);
@@ -617,6 +619,7 @@ void LPG_(bitset_next)(SmartSeek* ss);
 
 /* from cfg.c */
 void LPG_(init_cfg_hash)(void);
+void LPG_(destroy_cfg_hash)(void);
 CFG* LPG_(get_cfg)(Addr addr);
 Addr LPG_(cfg_addr)(CFG* cfg);
 FunctionDesc* LPG_(cfg_fdesc)(CFG* cfg);
@@ -662,7 +665,6 @@ void LPG_(fprint_detailed_cfg)(VgFile* out, CFG* cfg);
 void LPG_(write_cfgs)(VgFile* out_fp);
 void LPG_(read_cfgs)(Int fd);
 void LPG_(dump_cfg)(CFG* cfg);
-void LPG_(delete_cfg)(CFG* cfg);
 void LPG_(forall_cfg)(void (*func)(CFG*), Bool all);
 void LPG_(clear_visited)(CFG* cfg);
 Bool LPG_(is_instr_leader)(UniqueInstr* instr);
@@ -674,11 +676,13 @@ void LPG_(print_usage)(void);
 void LPG_(print_debug_usage)(void);
 
 /* from context.c */
-void LPG_(init_fn_stack)(fn_stack*);
-void LPG_(copy_current_fn_stack)(fn_stack*);
-void LPG_(set_current_fn_stack)(fn_stack*);
+void LPG_(init_fn_stack)(fn_stack* s);
+void LPG_(destroy_fn_stack)(fn_stack* s);
+void LPG_(copy_current_fn_stack)(fn_stack* dst);
+void LPG_(set_current_fn_stack)(fn_stack* s);
 
 void LPG_(init_cxt_table)(void);
+void LPG_(destroy_cxt_table)(void);
 Context* LPG_(get_cxt)(fn_node** fn);
 void LPG_(push_cxt)(fn_node* fn);
 
@@ -696,13 +700,15 @@ Bool LPG_(is_main_function)(FunctionDesc* fdesc);
 Bool LPG_(compare_functions_desc)(FunctionDesc* fdesc1, FunctionDesc* fdesc2);
 
 /* from fn.c */
-void LPG_(init_fn_array)(fn_array*);
+void LPG_(init_fn_array)(fn_array* a);
+void LPG_(destroy_fn_array)(fn_array* a);
 void LPG_(copy_current_fn_array)(fn_array* dst);
 fn_array* LPG_(get_current_fn_array)(void);
-void LPG_(set_current_fn_array)(fn_array*);
+void LPG_(set_current_fn_array)(fn_array* a);
 UInt* LPG_(get_fn_entry)(Int n);
 
-void      LPG_(init_obj_table)(void);
+void LPG_(init_obj_table)(void);
+void LPG_(destroy_obj_table)(void);
 obj_node* LPG_(get_obj_node)(DebugInfo* si);
 file_node* LPG_(get_file_node)(obj_node*, const HChar *dirname,
                                const HChar* filename);
@@ -780,9 +786,10 @@ void LPG_(print_instr_description)(InstrDesc* idesc);
 void LPG_(fprint_instr_description)(VgFile* fp, InstrDesc* idesc);
 
 /* from callstack.c */
-void LPG_(init_call_stack)(call_stack*);
+void LPG_(init_call_stack)(call_stack* s);
+void LPG_(destroy_call_stack)(call_stack* s);
 void LPG_(copy_current_call_stack)(call_stack* dst);
-void LPG_(set_current_call_stack)(call_stack*);
+void LPG_(set_current_call_stack)(call_stack* s);
 call_entry* LPG_(get_call_entry)(Int n);
 void LPG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp);
 void LPG_(pop_call_stack)(Bool halt);
@@ -790,6 +797,7 @@ Int LPG_(unwind_call_stack)(Addr sp, Int);
 
 /* from threads.c */
 void LPG_(init_threads)(void);
+void LPG_(destroy_threads)(void);
 thread_info** LPG_(get_threads)(void);
 thread_info* LPG_(get_current_thread)(void);
 void LPG_(switch_thread)(ThreadId tid);
@@ -797,9 +805,10 @@ void LPG_(forall_threads)(void (*func)(thread_info*));
 void LPG_(run_thread)(ThreadId tid);
 
 void LPG_(init_exec_state)(exec_state* es);
-void LPG_(init_exec_stack)(exec_stack*);
-void LPG_(copy_current_exec_stack)(exec_stack*);
-void LPG_(set_current_exec_stack)(exec_stack*);
+void LPG_(init_exec_stack)(exec_stack* es);
+void LPG_(destroy_exec_stack)(exec_stack* es);
+void LPG_(copy_current_exec_stack)(exec_stack* dst);
+void LPG_(set_current_exec_stack)(exec_stack* dst);
 void LPG_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack);
 void LPG_(post_signal)(ThreadId tid, Int sigNum);
 void LPG_(run_post_signal_on_call_stack_bottom)(void);

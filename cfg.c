@@ -181,31 +181,6 @@ void resize_cfg_table(void) {
 }
 
 static
-Bool remove_from_cfg_table(Addr addr) {
-	UInt idx;
-	Bool found;
-	CFG** cfg;
-
-	LPG_ASSERT(addr != 0);
-
-	idx = cfg_hash_idx(addr, cfgs.size);
-	cfg = &(cfgs.table[idx]);
-
-	found = False;
-	while (*cfg) {
-		if ((*cfg)->addr == addr) {
-			*cfg = (*cfg)->chain;
-			found = True;
-			break;
-		}
-
-		cfg = &((*cfg)->chain);
-	}
-
-	return found;
-}
-
-static
 CFG* lookup_cfg(Addr addr) {
 	CFG* cfg;
 	Int idx;
@@ -911,6 +886,33 @@ CFG* new_cfg(Addr addr) {
 	return cfg;
 }
 
+static
+void delete_cfg(CFG* cfg) {
+	Int i, size;
+
+	LPG_ASSERT(cfg != 0);
+
+	if (cfg->fdesc)
+		LPG_(delete_fdesc)(cfg->fdesc);
+
+	size = LPG_(smart_list_count)(cfg->nodes);
+	for (i = 0; i < size; i++) {
+		CfgNode* node = (CfgNode*) LPG_(smart_list_at)(cfg->nodes, i);
+		LPG_ASSERT(node != 0);
+
+		delete_cfgnode(node);
+
+		LPG_(smart_list_set)(cfg->nodes, i, 0);
+	}
+
+	LPG_(delete_smart_list)(cfg->nodes);
+
+	LPG_(smart_hash_clear)(cfg->cache.refs, 0);
+	LPG_(delete_smart_hash)(cfg->cache.refs);
+
+	LPG_DATA_FREE(cfg, sizeof(CFG));
+}
+
 void LPG_(init_cfg_hash)() {
 	Int size;
 
@@ -922,6 +924,30 @@ void LPG_(init_cfg_hash)() {
 	VG_(memset)(cfgs.table, 0, size);
 
 	leaders = LPG_(new_smart_hash)(4 * cfgs.size + 9);
+}
+
+void LPG_(destroy_cfg_hash)() {
+	Int i;
+
+	for (i = 0; i < cfgs.size; i++) {
+		CFG* cfg = cfgs.table[i];
+		while (cfg) {
+			CFG* next = cfg->chain;
+			delete_cfg(cfg);
+			cfg = next;
+
+			cfgs.entries--;
+		}
+	}
+
+	LPG_ASSERT(cfgs.entries == 0);
+
+	LPG_FREE(cfgs.table);
+	cfgs.table = 0;
+
+	LPG_(smart_hash_clear)(leaders, 0);
+	LPG_(delete_smart_hash)(leaders);
+	leaders = 0;
 }
 
 CFG* LPG_(get_cfg)(Addr addr) {
@@ -2440,38 +2466,6 @@ void LPG_(dump_cfg)(CFG* cfg) {
 
 		VG_(fclose)(out);
 	}
-}
-
-void LPG_(delete_cfg)(CFG* cfg) {
-	Bool found;
-	SmartSeek* ss;
-
-	LPG_ASSERT(cfg != 0);
-
-	found = remove_from_cfg_table(cfg->addr);
-	LPG_ASSERT(found);
-
-	if (cfg->fdesc)
-		LPG_(delete_fdesc)(cfg->fdesc);
-
-	ss = LPG_(smart_list_seek)(cfg->nodes);
-	while (LPG_(smart_list_has_next)(ss)) {
-		CfgNode* node = (CfgNode*) LPG_(smart_list_get_value)(ss);
-		LPG_ASSERT(node != 0);
-
-		delete_cfgnode(node);
-
-		LPG_(smart_list_set_value)(ss, 0);
-		LPG_(smart_list_next)(ss);
-	}
-
-	LPG_(smart_list_delete_seek)(ss);
-	LPG_(delete_smart_list)(cfg->nodes);
-
-	LPG_(smart_hash_clear)(cfg->cache.refs, 0);
-	LPG_(delete_smart_hash)(cfg->cache.refs);
-
-	LPG_DATA_FREE(cfg, sizeof(CFG));
 }
 
 void LPG_(forall_cfg)(void (*func)(CFG*), Bool all) {

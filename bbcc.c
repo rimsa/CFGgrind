@@ -53,6 +53,27 @@ void LPG_(init_bbcc_hash)(bbcc_hash* bbccs) {
 		bbccs->table[i] = NULL;
 }
 
+void LPG_(destroy_bbcc_hash)(bbcc_hash* bbccs) {
+	Int i;
+
+	LPG_ASSERT(bbccs != 0);
+	for (i = 0; i < bbccs->size; i++) {
+		BBCC* bbcc = bbccs->table[i];
+		while (bbcc) {
+			BBCC* next = bbcc->next;
+			LPG_DATA_FREE(bbcc, sizeof(BBCC));
+			bbcc = next;
+
+			bbccs->entries--;
+		}
+	}
+
+	LPG_ASSERT(bbccs->entries == 0);
+
+	LPG_FREE(bbccs->table);
+	bbccs->table = 0;
+}
+
 void LPG_(copy_current_bbcc_hash)(bbcc_hash* dst) {
 	LPG_ASSERT(dst != 0);
 
