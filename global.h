@@ -864,14 +864,17 @@ void LPG_(print_addr_ln)(Addr addr);
 void* LPG_(malloc)(const HChar* cc, UWord s, const HChar* f);
 void* LPG_(realloc)(const HChar* cc, void* p, UWord s, const HChar* f);
 void LPG_(free)(void* p, const HChar* f);
+HChar* LPG_(strdup)(const HChar* cc, const HChar* s, const HChar* f);
 
-#define LPG_MALLOC(_cc,x) 		LPG_(malloc)((_cc),x,__FUNCTION__)
-#define LPG_FREE(p)       		LPG_(free)(p,__FUNCTION__)
+#define LPG_MALLOC(_cc,x)		LPG_(malloc)((_cc),x,__FUNCTION__)
+#define LPG_FREE(p)				LPG_(free)(p,__FUNCTION__)
 #define LPG_REALLOC(_cc,p,x)		LPG_(realloc)((_cc),p,x,__FUNCTION__)
+#define LPG_STRDUP(_cc,s)		LPG_(strdup)((_cc),s,__FUNCTION__)
 #else
-#define LPG_MALLOC(_cc,x) 		VG_(malloc)((_cc),x)
-#define LPG_FREE(p)       		VG_(free)(p)
+#define LPG_MALLOC(_cc,x)		VG_(malloc)((_cc),x)
+#define LPG_FREE(p)				VG_(free)(p)
 #define LPG_REALLOC(_cc,p,x)		VG_(realloc)((_cc),p,x)
+#define LPG_STRDUP(_cc,s)		VG_(strdup)((_cc),s)
 #endif
 
 #define LPG_UNUSED(arg)			(void)arg;

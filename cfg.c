@@ -169,7 +169,7 @@ void resize_cfg_table(void) {
 		}
     }
 
-    VG_(free)(cfgs.table);
+    LPG_FREE(cfgs.table);
 
     LPG_DEBUG(0, "Resize CFG Hash: %u => %d (entries %u, conflicts %d)\n",
 	     cfgs.size, new_size,

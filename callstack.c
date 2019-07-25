@@ -100,9 +100,8 @@ void ensure_stack_size(Int i)
   cs->size *= 2;
   while (i > cs->size) cs->size *= 2;
 
-  cs->entry = (call_entry*) VG_(realloc)("cl.callstack.ess.1",
-                                         cs->entry,
-					 cs->size * sizeof(call_entry));
+  cs->entry = (call_entry*) LPG_REALLOC("cl.callstack.ess.1",
+		  	  	  cs->entry, cs->size * sizeof(call_entry));
 
   for(i=oldsize; i<cs->size; i++) {
     cs->entry[i].cfg = 0;

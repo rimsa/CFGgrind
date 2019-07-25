@@ -171,7 +171,7 @@ static void resize_bbcc_hash(void) {
 		}
 	}
 
-	VG_(free)(current_bbccs.table);
+	LPG_FREE(current_bbccs.table);
 
 	LPG_DEBUG(0, "Resize BBCC Hash: %u => %d (entries %u, conflicts %d/%d)\n",
 			current_bbccs.size, new_size, current_bbccs.entries, conflicts1,

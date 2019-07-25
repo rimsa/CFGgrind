@@ -86,7 +86,7 @@ Bool LPG_(process_cmd_line_option)(const HChar* arg)
 			   LPG_(clo).dump_cfgs.fnames = LPG_(new_smart_list)(1);
 
 		   LPG_(smart_list_add)(LPG_(clo).dump_cfgs.fnames,
-				   (void*) VG_(strdup)("lg.clo.pclo.1", tmp_str));
+				   (void*) LPG_STRDUP("lg.clo.pclo.1", tmp_str));
 	   }
    }
    else if VG_STR_CLO(arg, "--cfg-dump-dir", LPG_(clo).dump_cfgs.dir) {}

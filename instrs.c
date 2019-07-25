@@ -68,7 +68,7 @@ void read_instr_names(void) {
 				addr = VG_(strtoull16)(line, 0);
 				if (addr != 0 && *name != 0) {
 					instr = LPG_(get_instr)(addr, 0);
-					instr->name = VG_(strdup)("lg.instrs.rin.1", name);
+					instr->name = LPG_STRDUP("lg.instrs.rin.1", name);
 				}
 			}
 		}

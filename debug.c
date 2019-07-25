@@ -276,6 +276,17 @@ void LPG_(free)(void* p, const HChar* f) {
 	LPG_DEBUG(3, "Free in %s: %p\n", f, p);
 	VG_(free)(p);
 }
+
+HChar* LPG_(strdup)(const HChar* cc, const HChar* s, const HChar* f) {
+	HChar* p;
+
+	LPG_UNUSED(cc);
+
+	LPG_DEBUG(3, "Strdup(%s) in %s: ", s, f);
+	p = VG_(strdup)(cc, s);
+	LPG_DEBUG(3, "%p\n", p);
+	return p;
+}
 #endif
 
 #else /* LPG_ENABLE_DEBUG */

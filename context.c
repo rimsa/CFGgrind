@@ -117,8 +117,7 @@ static void resize_cxt_table(void)
         }
     }
 
-    VG_(free)(cxts.table);
-
+    LPG_FREE(cxts.table);
 
     LPG_DEBUG(0, "Resize Context Hash: %u => %u (entries %u, conflicts %u/%u)\n",
              cxts.size, new_size,
@@ -296,7 +295,7 @@ void LPG_(push_cxt)(fn_node* fn)
     int i;
     for(i=0;i<LPG_(current_fn_stack).size;i++)
       new_array[i] = LPG_(current_fn_stack).bottom[i];
-    VG_(free)(LPG_(current_fn_stack).bottom);
+    LPG_FREE(LPG_(current_fn_stack).bottom);
     LPG_(current_fn_stack).top = new_array + fn_entries;
     LPG_(current_fn_stack).bottom = new_array;
 

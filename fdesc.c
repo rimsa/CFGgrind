@@ -25,12 +25,12 @@ FunctionDesc* LPG_(new_fdesc)(Addr addr, Bool entry) {
 	if (found) {
 		fdesc = (FunctionDesc*) LPG_MALLOC("lg.fdesc.nf.1", sizeof(FunctionDesc));
 
-		fdesc->fn_name = VG_(strdup)("lg.fdesc.nf.2", tmp);
+		fdesc->fn_name = LPG_STRDUP("lg.fdesc.nf.2", tmp);
 		if (!VG_(get_linenum)(ep, addr, &(fdesc->fn_line)))
 			fdesc->fn_line = -1;
 
 		fdesc->obj_name = VG_(get_objname)(ep, addr, &tmp) ?
-								VG_(strdup)("lg.fdesc.nf.3", tmp) : 0;
+								LPG_STRDUP("lg.fdesc.nf.3", tmp) : 0;
 	} else {
 		fdesc = 0;
 	}
@@ -92,7 +92,7 @@ HChar* LPG_(fdesc2str)(FunctionDesc* fdesc) {
 	HChar* fn_obj_name;
 
 	if (fdesc == NULL) {
-		return VG_(strdup)("lg.fdesc.fts.1", "unknown");
+		return LPG_STRDUP("lg.fdesc.fts.1", "unknown");
 	} else {
 		obj_name = fdesc->obj_name ? fdesc->obj_name : unknown_name;
 		fn_name = fdesc->fn_name ? fdesc->fn_name : unknown_name;
@@ -127,14 +127,14 @@ FunctionDesc* LPG_(str2fdesc)(const HChar* str) {
 		*(fdesc->obj_name + size) = 0;
 
 		ptr++;
-		tmp = VG_(strdup)("lg.fdesc.s2f.3", ptr);
+		tmp = LPG_STRDUP("lg.fdesc.s2f.3", ptr);
 		if ((ptr = VG_(strchr)(tmp, ')')))
 			*ptr = 0;
 
 		fdesc->fn_line = VG_(strtoll10)(tmp, 0);
-		VG_(free)(tmp);
+		LPG_FREE(tmp);
 	} else {
-		fdesc->obj_name = VG_(strdup)("lg.fdesc.s2f.4", str);
+		fdesc->obj_name = LPG_STRDUP("lg.fdesc.s2f.4", str);
 		fdesc->fn_line = -1;
 	}
 
@@ -142,7 +142,7 @@ FunctionDesc* LPG_(str2fdesc)(const HChar* str) {
 		*ptr = 0;
 
 		ptr += 2;
-		fdesc->fn_name = VG_(strdup)("lg.fdesc.s2f.5", ptr);
+		fdesc->fn_name = LPG_STRDUP("lg.fdesc.s2f.5", ptr);
 	} else {
 		fdesc->fn_name = fdesc->obj_name;
 		fdesc->obj_name = 0;

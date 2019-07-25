@@ -232,9 +232,8 @@ obj_node* new_obj_node(DebugInfo* di, obj_node* next)
    obj_node* obj;
 
    obj = (obj_node*) LPG_MALLOC("cl.fn.non.1", sizeof(obj_node));
-   obj->name  = di ? VG_(strdup)( "cl.fn.non.2",
-                                  VG_(DebugInfo_get_filename)(di) )
-                   : anonymous_obj;
+   obj->name  = LPG_STRDUP("cl.fn.non.2",
+		   di ? VG_(DebugInfo_get_filename)(di) : anonymous_obj);
    for (i = 0; i < N_FILE_ENTRIES; i++) {
       obj->files[i] = NULL;
    }
@@ -292,7 +291,7 @@ file_node* new_file_node(const HChar *filename,
   Int i;
   file_node* file = (file_node*) LPG_MALLOC("cl.fn.nfn.1",
                                            sizeof(file_node));
-  file->name  = VG_(strdup)("cl.fn.nfn.2", filename);
+  file->name  = LPG_STRDUP("cl.fn.nfn.2", filename);
   for (i = 0; i < N_FN_ENTRIES; i++) {
     file->fns[i] = NULL;
   }
@@ -343,7 +342,7 @@ fn_node* new_fn_node(const HChar *fnname,
 {
     fn_node* fn = (fn_node*) LPG_MALLOC("cl.fn.nfnnd.1",
                                          sizeof(fn_node));
-    fn->name = VG_(strdup)("cl.fn.nfnnd.2", fnname);
+    fn->name = LPG_STRDUP("cl.fn.nfnnd.2", fnname);
 
     LPG_(stat).distinct_fns++;
     fn->number   = LPG_(stat).distinct_fns;
@@ -651,7 +650,7 @@ static void resize_fn_array(void)
     while(i<newsize)
 	new_array[i++] = 0;
 
-    VG_(free)(current_fn_active.array);
+    LPG_FREE(current_fn_active.array);
     current_fn_active.size = newsize;
     current_fn_active.array = new_array;
     LPG_(stat).fn_array_resizes++;

@@ -98,8 +98,7 @@ void resize_bb_table(void)
 	}
     }
 
-    VG_(free)(bbs.table);
-
+    LPG_FREE(bbs.table);
 
     LPG_DEBUG(0, "Resize BB Hash: %u => %d (entries %u, conflicts %d/%d)\n",
 	     bbs.size, new_size,
