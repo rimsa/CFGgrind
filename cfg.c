@@ -849,10 +849,10 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	node->data.block->indirect = False;
 
 	// Transfer the sucessors to the new node and connect them.
-	new_node->info.successors.nodes = node->info.successors.nodes;
-	node->info.successors.nodes = LPG_(new_smart_list)(1);
-	new_node->info.successors.flags = node->info.successors.flags;
-	node->info.successors.flags = LPG_(new_bitset)(1);
+	LPG_(smart_list_copy)(new_node->info.successors.nodes, node->info.successors.nodes);
+	LPG_(smart_list_clear)(node->info.successors.nodes, 0);
+	LPG_(bitset_copy)(new_node->info.successors.flags, node->info.successors.flags);
+	LPG_(bitset_clear)(node->info.successors.flags);
 	add_edge2nodes(cfg, node, new_node, False);
 
 	// Fix the predecessors of the successors to the new node.
