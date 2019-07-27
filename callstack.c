@@ -217,6 +217,11 @@ void LPG_(pop_call_stack)(Bool halt) {
     LPG_DEBUG(4,"+ pop_call_stack: frame %d\n",
 		LPG_(current_call_stack).sp);
 
+    /* restore context */
+    LPG_(current_state).cxt = lower_entry->cxt;
+    LPG_(current_fn_stack).top = LPG_(current_fn_stack).bottom + lower_entry->fn_sp;
+    LPG_ASSERT(LPG_(current_state).cxt != 0);
+
     /* To allow for an assertion in push_call_stack() */
     lower_entry->cxt = 0;
 
