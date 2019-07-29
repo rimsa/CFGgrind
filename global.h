@@ -122,16 +122,12 @@ struct _Statistics {
   Int  distinct_fns;
   Int  distinct_contexts;
   Int  distinct_bbs;
-  Int  distinct_bbccs;
   Int  distinct_instrs;
   Int  distinct_groups;
   Int  distinct_cfgs;
   Int  distinct_cfg_nodes;
 
   Int  bb_hash_resizes;
-  Int  bbcc_hash_resizes;
-  Int  cxt_hash_resizes;
-  Int  fn_array_resizes;
   Int  call_stack_resizes;
   Int  fn_stack_resizes;
   Int  cfg_hash_resizes;
@@ -140,9 +136,6 @@ struct _Statistics {
   Int  file_line_debug_BBs;
   Int  fn_name_debug_BBs;
   Int  no_debug_BBs;
-  Int  bbcc_lru_misses;
-  Int  cxt_lru_misses;
-  Int  bbcc_clones;
 };
 
 
@@ -153,8 +146,6 @@ struct _Statistics {
 typedef struct _Context				Context;
 typedef struct _CC					CC;
 typedef struct _BB					BB;
-typedef struct _BBCC					BBCC;
-typedef struct _fCC					fCC;
 typedef struct _fn_node				fn_node;
 typedef struct _file_node			file_node;
 typedef struct _obj_node				obj_node;
@@ -266,12 +257,8 @@ struct _CJmpInfo {
  * from possibly multiple mappings of the same ELF object.
  *
  * At the beginning of each instrumented BB,
- * a call to setup_bbcc(), specifying a pointer to the
+ * a call to setup_bb(), specifying a pointer to the
  * according BB structure, is added.
- *
- * As cost of a BB has to be distinguished depending on the context,
- * multiple cost centers for one BB (struct BBCC) exist and the according
- * BBCC is set by setup_bbcc.
  */
 struct _BB {
   obj_node*  obj;         /* ELF object of BB */
@@ -285,9 +272,6 @@ struct _BB {
   fn_node*   fn;          /* debug info for this BB */
   UInt       line;
   Bool       is_entry;    /* True if this BB is a function entry */
-        
-  BBCC*      bbcc_list;  /* BBCCs for same BB (see next_bbcc in BBCC) */
-  BBCC*      last_bbcc;  /* Temporary: Cached for faster access (LRU) */
 
   /* filled by LPG_(instrument) if not seen before */
   UInt       cjmp_count;  /* number of side exits */
@@ -302,68 +286,13 @@ struct _BB {
   InstrInfo  instr[0];   /* info on instruction sizes and costs */
 };
 
-
-
-/**
- * Function context
- *
- * Basic blocks are always executed in the scope of a context.
- * A function context is a list of function nodes representing
- * the call chain to the current context: I.e. fn[0] is the
- * function we are currently in, fn[1] has called fn[0], and so on.
- * Recursion levels are used for fn[0].
- *
- * To get a unique number for a full execution context, use
- *  rec_index = min(<fn->rec_separation>,<active>) - 1;
- *  unique_no = <number> + rec_index
- *
- * For each Context, recursion index and BB, there can be a BBCC.
- */
-struct _Context {
-    UInt size;        // number of function dependencies
-    UInt base_number; // for context compression & dump array
-    Context* next;    // entry chaining for hash
-    UWord hash;       // for faster lookup...
-    fn_node* fn[0];
-};
-
-/*
- * Basic Block Cost Center
- *
- * On demand, multiple BBCCs will be created for the same BB
- * dependent on command line options and:
- * - current function (it's possible that a BB is executed in the
- *   context of different functions, e.g. in manual assembler/PLT)
- * - current thread ID
- * - position where current function is called from
- * - recursion level of current function
- *
- * The cost centres for the instructions of a basic block are
- * stored in a contiguous array.
- * They are distinguishable by their tag field.
- */
-struct _BBCC {
-    BB*      bb;           /* BB for this cost center */
-
-    Context* cxt;          /* execution context of this BBCC */
-    ThreadId tid;          /* only for assertion check purpose */
-
-    BBCC*    next_bbcc;    /* Chain of BBCCs for same BB */
-    BBCC*    lru_next_bbcc; /* BBCC executed next the last time */
-    
-    BBCC*    next;         /* entry chain in hash */
-};
-
-
 /* the <number> of fn_node, file_node and obj_node are for compressed dumping
  * and a index into the dump boolean table and fn_info_table
  */
-
 struct _fn_node {
   HChar*     name;
   UInt       number;
-  Context*   last_cxt; /* LRU info */
-  Context*   pure_cxt; /* the context with only the function itself */
+  Bool		visited;
   file_node* file;     /* reverse mapping for 2nd hash */
   fn_node* next;
 
@@ -412,8 +341,6 @@ struct _call_entry {
     Addr sp;            /* stack pointer directly after call */
     Addr ret_addr;      /* address to which to return to
 			 * is 0 on a simulated call */
-    Context* cxt;       /* context before call */
-    Int fn_sp;          /* function stack index before call */
 
     CFG* cfg;
     CfgInstrRef* dangling;
@@ -439,11 +366,9 @@ struct _exec_state {
   /* the old call stack pointer at entering the signal handler */
   Int orig_sp;
   
-  Context* cxt;
-  
   /* number of conditional jumps passed in last BB */
   Int   jmps_passed;
-  BBCC* bbcc;      /* last BB executed */
+  BB*   bb;      /* last BB executed */
 
   Int call_stack_bottom; /* Index into fn_stack */
 
@@ -471,28 +396,6 @@ typedef struct _bb_hash bb_hash;
 struct _bb_hash {
   UInt size, entries;
   BB** table;
-};
-
-typedef struct _cxt_hash cxt_hash;
-struct _cxt_hash {
-  UInt size, entries;
-  Context** table;
-};  
-
-/* Thread specific state structures, i.e. parts of a thread state.
- * There are variables for the current state of each part,
- * on which a thread state is copied at thread switch.
- */
-typedef struct _bbcc_hash bbcc_hash;
-struct _bbcc_hash {
-  UInt size, entries;
-  BBCC** table;
-};
-
-typedef struct _fn_array fn_array;
-struct _fn_array {
-  UInt size;
-  UInt* array;
 };
 
 typedef struct _call_stack call_stack;
@@ -530,19 +433,11 @@ struct _exec_stack {
  * This structure stores thread specific info while a thread is *not*
  * running. See function switch_thread() for save/restore on thread switch.
  *
- * If --separate-threads=no, BBCCs and JCCs can be shared by all threads, i.e.
- * only structures of thread 1 are used.
- * This involves variables fn_info_table, bbcc_table and jcc_table.
  */
 struct _thread_info {
   /* state */
-  fn_stack fns;       /* function stack */
   call_stack calls;   /* context call arc stack */
   exec_stack states;  /* execution states interrupted by signals */
-
-  /* thread specific data structure containers */
-  fn_array fn_active;
-  bbcc_hash bbccs;
 };
 
 /*------------------------------------------------------------*/
@@ -555,23 +450,13 @@ void LPG_(destroy_bb_hash)(void);
 bb_hash* LPG_(get_bb_hash)(void);
 BB*  LPG_(get_bb)(Addr addr, IRSB* bb_in, Bool *seen_before);
 void LPG_(delete_bb)(Addr addr);
+void LPG_(setup_bb)(BB* bb) VG_REGPARM(1);
 
 static __inline__ Addr bb_addr(BB* bb)
  { return bb->offset + bb->obj->offset; }
 static __inline__ Addr bb_jmpaddr(BB* bb)
  { UInt off = (bb->instr_count > 0) ? bb->instr[bb->instr_count-1].instr_offset : 0;
    return off + bb->offset + bb->obj->offset; }
-
-/* from bbcc.c */
-void LPG_(init_bbcc_hash)(bbcc_hash* bbccs);
-void LPG_(destroy_bbcc_hash)(bbcc_hash* bbccs);
-void LPG_(copy_current_bbcc_hash)(bbcc_hash* dst);
-bbcc_hash* LPG_(get_current_bbcc_hash)(void);
-void LPG_(set_current_bbcc_hash)(bbcc_hash*);
-void LPG_(forall_bbccs)(void (*func)(BBCC*));
-BBCC* LPG_(clone_bbcc)(BBCC* orig, Context* cxt);
-BBCC* LPG_(get_bbcc)(BB* bb);
-void LPG_(setup_bbcc)(BB* bb) VG_REGPARM(1);
 
 /* from bitset.c */
 BitSet* LPG_(new_bitset)(Int size);
@@ -675,17 +560,6 @@ Bool LPG_(process_cmd_line_option)(const HChar*);
 void LPG_(print_usage)(void);
 void LPG_(print_debug_usage)(void);
 
-/* from context.c */
-void LPG_(init_fn_stack)(fn_stack* s);
-void LPG_(destroy_fn_stack)(fn_stack* s);
-void LPG_(copy_current_fn_stack)(fn_stack* dst);
-void LPG_(set_current_fn_stack)(fn_stack* s);
-
-void LPG_(init_cxt_table)(void);
-void LPG_(destroy_cxt_table)(void);
-Context* LPG_(get_cxt)(fn_node** fn);
-void LPG_(push_cxt)(fn_node* fn);
-
 /* from fdesc.c */
 FunctionDesc* LPG_(new_fdesc)(Addr addr, Bool entry);
 void LPG_(delete_fdesc)(FunctionDesc* fdesc);
@@ -700,13 +574,6 @@ Bool LPG_(is_main_function)(FunctionDesc* fdesc);
 Bool LPG_(compare_functions_desc)(FunctionDesc* fdesc1, FunctionDesc* fdesc2);
 
 /* from fn.c */
-void LPG_(init_fn_array)(fn_array* a);
-void LPG_(destroy_fn_array)(fn_array* a);
-void LPG_(copy_current_fn_array)(fn_array* dst);
-fn_array* LPG_(get_current_fn_array)(void);
-void LPG_(set_current_fn_array)(fn_array* a);
-UInt* LPG_(get_fn_entry)(Int n);
-
 void LPG_(init_obj_table)(void);
 void LPG_(destroy_obj_table)(void);
 obj_node* LPG_(get_obj_node)(DebugInfo* si);
@@ -791,7 +658,7 @@ void LPG_(destroy_call_stack)(call_stack* s);
 void LPG_(copy_current_call_stack)(call_stack* dst);
 void LPG_(set_current_call_stack)(call_stack* s);
 call_entry* LPG_(get_call_entry)(Int n);
-void LPG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp);
+void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp);
 void LPG_(pop_call_stack)(Bool halt);
 Int LPG_(unwind_call_stack)(Addr sp, Int);
 
@@ -824,7 +691,6 @@ extern Statistics LPG_(stat);
 extern UInt* LPG_(fn_active_array);
  /* min of L1 and LL cache line sizes */
 extern call_stack LPG_(current_call_stack);
-extern fn_stack   LPG_(current_fn_stack);
 extern exec_state LPG_(current_state);
 extern ThreadId   LPG_(current_tid);
 
@@ -846,7 +712,6 @@ extern ThreadId   LPG_(current_tid);
 
 #define LPG_ASSERT(cond)              \
     if (UNLIKELY(!(cond))) {          \
-      LPG_(print_context)();          \
       LPG_(print_bbno)();	      \
       tl_assert(cond);                \
      }
@@ -859,12 +724,8 @@ extern ThreadId   LPG_(current_tid);
 
 /* from debug.c */
 void LPG_(print_bbno)(void);
-void LPG_(print_context)(void);
-void LPG_(print_bbcc)(int s, BBCC* bbcc);
-void LPG_(print_bbcc_fn)(BBCC* bbcc);
 void LPG_(print_execstate)(int s, exec_state* es);
 void LPG_(print_bb)(int s, BB* bb);
-void LPG_(print_cxt)(int s, Context* cxt);
 void LPG_(print_stackentry)(int s, int sp);
 void LPG_(print_addr)(Addr addr);
 void LPG_(print_addr_ln)(Addr addr);

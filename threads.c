@@ -49,7 +49,6 @@ static exec_stack current_states;
  * so we don't need locks...
  *
  * Per-thread data:
- *  - BBCCs
  *  - call stack
  *  - call hash
  *  - event counters: last, current
@@ -109,13 +108,7 @@ thread_info* new_thread(void)
     /* init state */
     LPG_(init_exec_stack)( &(t->states) );
     LPG_(init_call_stack)( &(t->calls) );
-    LPG_(init_fn_stack)  ( &(t->fns) );
-    /* t->states.entry[0]->cxt = LPG_(get_cxt)(t->fns.bottom); */
 
-    /* init data containers */
-    LPG_(init_fn_array)( &(t->fn_active) );
-    LPG_(init_bbcc_hash)( &(t->bbccs) );
-    
     return t;
 }
 
@@ -123,12 +116,7 @@ static
 void delete_thread(thread_info* t) {
 	LPG_ASSERT(t != 0);
 
-	/* destroy data containers */
-	LPG_(destroy_bbcc_hash)(&(t->bbccs));
-	LPG_(destroy_fn_array)(&(t->fn_active));
-
 	/* destroy state */
-	LPG_(destroy_fn_stack)(&(t->fns));
 	LPG_(destroy_call_stack)(&(t->calls));
 	LPG_(destroy_exec_stack)(&(t->states));
 
@@ -144,10 +132,6 @@ void LPG_(destroy_threads)() {
 			if (LPG_(current_tid) == i) {
 				LPG_(copy_current_exec_stack)(&(threads[i]->states));
 				LPG_(copy_current_call_stack)(&(threads[i]->calls));
-				LPG_(copy_current_fn_stack)(&(threads[i]->fns));
-
-				LPG_(copy_current_fn_array)(&(threads[i]->fn_active));
-				LPG_(copy_current_bbcc_hash)(&(threads[i]->bbccs));
 			}
 
 			delete_thread(threads[i]);
@@ -177,11 +161,6 @@ void LPG_(switch_thread)(ThreadId tid)
     exec_state_save();
     LPG_(copy_current_exec_stack)( &(t->states) );
     LPG_(copy_current_call_stack)( &(t->calls) );
-    LPG_(copy_current_fn_stack)  ( &(t->fns) );
-
-    LPG_(copy_current_fn_array) ( &(t->fn_active) );
-    /* If we cumulate costs of threads, use TID 1 for all jccs/bccs */
-    LPG_(copy_current_bbcc_hash)( &(t->bbccs) );
   }
 
   LPG_(current_tid) = tid;
@@ -200,11 +179,6 @@ void LPG_(switch_thread)(ThreadId tid)
     LPG_(set_current_exec_stack)( &(t->states) );
     exec_state_restore();
     LPG_(set_current_call_stack)( &(t->calls) );
-    LPG_(set_current_fn_stack)  ( &(t->fns) );
-    
-    LPG_(set_current_fn_array)  ( &(t->fn_active) );
-    /* If we cumulate costs of threads, use TID 1 for all jccs/bccs */
-    LPG_(set_current_bbcc_hash) ( &(t->bbccs) );
   }
 }
 
@@ -235,7 +209,6 @@ void LPG_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack)
     /* setup current state for a spontaneous call */
     LPG_(init_exec_state)( &LPG_(current_state) );
     LPG_(current_state).sig = sigNum;
-    LPG_(push_cxt)(0);
 }
 
 /* Run post-signal if the stackpointer for call stack is at
@@ -256,7 +229,6 @@ void LPG_(run_post_signal_on_call_stack_bottom)()
 void LPG_(post_signal)(ThreadId tid, Int sigNum)
 {
     exec_state* es;
-    UInt fn_number, *pactive;
 
     LPG_DEBUG(0, ">> post_signal(TID %u, sig %d)\n",
 	     tid, sigNum);
@@ -272,28 +244,6 @@ void LPG_(post_signal)(ThreadId tid, Int sigNum)
     LPG_ASSERT(es != 0);
     while(LPG_(current_call_stack).sp > es->call_stack_bottom)
       LPG_(pop_call_stack)(False);
-    
-    if (LPG_(current_state).cxt) {
-      /* correct active counts */
-      fn_number = LPG_(current_state).cxt->fn[0]->number;
-      pactive = LPG_(get_fn_entry)(fn_number);
-      (*pactive)--;
-      LPG_DEBUG(0, "  set active count of %s back to %u\n",
-	       LPG_(current_state).cxt->fn[0]->name, *pactive);
-    }
-
-    if (LPG_(current_fn_stack).top > LPG_(current_fn_stack).bottom) {
-	/* set fn_stack_top back.
-	 * top can point to 0 if nothing was executed in the signal handler;
-	 * this is possible at end on unwinding handlers.
-	 */
-	if (*(LPG_(current_fn_stack).top) != 0) {
-	    LPG_(current_fn_stack).top--;
-	    LPG_ASSERT(*(LPG_(current_fn_stack).top) == 0);
-	}
-      if (LPG_(current_fn_stack).top > LPG_(current_fn_stack).bottom)
-	LPG_(current_fn_stack).top--;
-    }
 
     /* restore previous context */
     es->sig = -1;
@@ -325,9 +275,8 @@ void LPG_(post_signal)(ThreadId tid, Int sigNum)
 /* not initialized: call_stack_bottom, sig */
 void LPG_(init_exec_state)(exec_state* es)
 {
-  es->cxt  = 0;
   es->jmps_passed = 0;
-  es->bbcc = 0;
+  es->bb = 0;
   es->cfg = 0;
   es->dangling = 0;
 }
@@ -437,16 +386,15 @@ exec_state* exec_state_save(void)
 {
   exec_state* es = top_exec_state();
 
-  es->cxt          = LPG_(current_state).cxt;
   es->jmps_passed  = LPG_(current_state).jmps_passed;
-  es->bbcc         = LPG_(current_state).bbcc;
+  es->bb           = LPG_(current_state).bb;
   es->cfg          = LPG_(current_state).cfg;
   es->dangling     = LPG_(current_state).dangling;
 
   LPG_DEBUGIF(1) {
     LPG_DEBUG(1, "  cxtinfo_save(sig %d): jmps_passed %d\n",
 	     es->sig, es->jmps_passed);
-    LPG_(print_bbcc)(-9, es->bbcc);
+    LPG_(print_bb)(-9, es->bb);
   }
 
   /* signal number does not need to be saved */
@@ -460,9 +408,8 @@ exec_state* exec_state_restore(void)
 {
   exec_state* es = top_exec_state();
   
-  LPG_(current_state).cxt          = es->cxt;
   LPG_(current_state).jmps_passed  = es->jmps_passed;
-  LPG_(current_state).bbcc         = es->bbcc;
+  LPG_(current_state).bb           = es->bb;
   LPG_(current_state).sig          = es->sig;
   LPG_(current_state).cfg          = es->cfg;
   LPG_(current_state).dangling     = es->dangling;
@@ -470,8 +417,6 @@ exec_state* exec_state_restore(void)
   LPG_DEBUGIF(1) {
 	LPG_DEBUG(1, "  exec_state_restore(sig %d): jmps_passed %d\n",
 		  es->sig, es->jmps_passed);
-	LPG_(print_bbcc)(-9, es->bbcc);
-	LPG_(print_cxt)(-9, es->cxt);
   }
 
   return es;

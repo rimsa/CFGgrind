@@ -63,16 +63,12 @@ static void LPG_(init_statistics)(Statistics* s) {
 	s->distinct_fns = 0;
 	s->distinct_contexts = 0;
 	s->distinct_bbs = 0;
-	s->distinct_bbccs = 0;
 	s->distinct_instrs = 0;
 	s->distinct_groups = 0;
 	s->distinct_cfgs = 0;
 	s->distinct_cfg_nodes = 0;
 
 	s->bb_hash_resizes = 0;
-	s->bbcc_hash_resizes = 0;
-	s->cxt_hash_resizes = 0;
-	s->fn_array_resizes = 0;
 	s->call_stack_resizes = 0;
 	s->fn_stack_resizes = 0;
 	s->cfg_hash_resizes = 0;
@@ -81,9 +77,6 @@ static void LPG_(init_statistics)(Statistics* s) {
 	s->file_line_debug_BBs = 0;
 	s->fn_name_debug_BBs = 0;
 	s->no_debug_BBs = 0;
-	s->bbcc_lru_misses = 0;
-	s->cxt_lru_misses = 0;
-	s->bbcc_clones = 0;
 }
 
 /* A struct which holds all the running state during instrumentation.
@@ -258,9 +251,9 @@ void addConstMemStoreStmt(IRSB* bbOut, UWord addr, UInt val, IRType hWordTy) {
 					IRExpr_Const(IRConst_U32(val))));
 }
 
-/* add helper call to setup_bbcc, with pointer to BB struct as argument
+/* add helper call to setup_bb, with pointer to BB struct as argument
  *
- * precondition for setup_bbcc:
+ * precondition for setup_bb:
  * - jmps_passed has number of cond.jumps passed in last executed BB
  * - current_bbcc has a pointer to the BBCC of the last executed BB
  *   Thus, if bbcc_jmpkind is != -1 (JmpNone),
@@ -285,8 +278,8 @@ void addBBSetupCall(LpgState* lpgs) {
 
 	arg1 = mkIRExpr_HWord((HWord) lpgs->bb);
 	argv = mkIRExprVec_1(arg1);
-	di = unsafeIRDirty_0_N(1, "setup_bbcc",
-			VG_(fnptr_to_fnentry)(&LPG_(setup_bbcc)), argv);
+	di = unsafeIRDirty_0_N(1, "setup_bb",
+			VG_(fnptr_to_fnentry)(&LPG_(setup_bb)), argv);
 	addStmtToIRSB(lpgs->sbOut, IRStmt_Dirty(di));
 }
 
@@ -535,7 +528,7 @@ static IRSB* LPG_(instrument)(VgCallbackClosure* closure, IRSB* sbIn,
 	}
 
 	/* Update global variable jmps_passed at end of SB.
-	 * As LPG_(current_state).jmps_passed is reset to 0 in setup_bbcc,
+	 * As LPG_(current_state).jmps_passed is reset to 0 in setup_bb,
 	 * this can be omitted if there is no conditional jump in this SB.
 	 * A correction is needed if VEX inverted the last jump condition
 	 */
@@ -648,7 +641,6 @@ void unwind_thread(thread_info* t) {
 
 	/* reset context and function stack for context generation */
 	LPG_(init_exec_state)(&LPG_(current_state));
-	LPG_(current_fn_stack).top = LPG_(current_fn_stack).bottom;
 }
 
 static
@@ -666,12 +658,8 @@ void lpg_print_stats(void) {
 	LPG_(stat).distinct_files);
 	VG_(message)(Vg_DebugMsg, "Distinct fns:       %d\n",
 	LPG_(stat).distinct_fns);
-	VG_(message)(Vg_DebugMsg, "Distinct contexts:  %d\n",
-	LPG_(stat).distinct_contexts);
 	VG_(message)(Vg_DebugMsg, "Distinct BBs:       %d\n",
 	LPG_(stat).distinct_bbs);
-	VG_(message)(Vg_DebugMsg, "Distinct BBCCs:     %d\n",
-	LPG_(stat).distinct_bbccs);
 	VG_(message)(Vg_DebugMsg, "BB lookups:         %d\n", BB_lookups);
 	if (BB_lookups > 0) {
 		VG_(message)(Vg_DebugMsg, "With full      debug info:%3d%% (%d)\n",
@@ -687,8 +675,6 @@ void lpg_print_stats(void) {
 		LPG_(stat).no_debug_BBs * 100 / BB_lookups,
 		LPG_(stat).no_debug_BBs);
 	}
-	VG_(message)(Vg_DebugMsg, "BBCC Clones:        %d\n",
-	LPG_(stat).bbcc_clones);
 	VG_(message)(Vg_DebugMsg, "BBs Retranslated:   %d\n",
 	LPG_(stat).bb_retranslations);
 	VG_(message)(Vg_DebugMsg, "Distinct instrs:    %d\n",
@@ -699,11 +685,6 @@ void lpg_print_stats(void) {
 	LPG_(stat).distinct_cfgs);
 	VG_(message)(Vg_DebugMsg, "Distinct CFG nodes: %d\n",
 	LPG_(stat).distinct_cfg_nodes);
-
-	VG_(message)(Vg_DebugMsg, "LRU Contxt Misses:  %d\n",
-	LPG_(stat).cxt_lru_misses);
-	VG_(message)(Vg_DebugMsg, "LRU BBCC Misses:    %d\n",
-	LPG_(stat).bbcc_lru_misses);
 	VG_(message)(Vg_DebugMsg, "BBs Executed:       %llu\n",
 	LPG_(stat).bb_executions);
 }
@@ -735,7 +716,6 @@ void finish(void) {
 	LPG_(destroy_instrs_pool)();
 	LPG_(destroy_cfg_hash)();
 	LPG_(destroy_bb_hash)();
-	LPG_(destroy_cxt_table)();
 	LPG_(destroy_obj_table)();
 
 	if (VG_(clo_verbosity) == 0)
@@ -806,7 +786,6 @@ void LPG_(post_clo_init)(void) {
 
 	/* initialize hash tables */
 	LPG_(init_obj_table)();
-	LPG_(init_cxt_table)();
 	LPG_(init_bb_hash)();
 	LPG_(init_cfg_hash)();
 

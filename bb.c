@@ -27,6 +27,7 @@
 */
 
 #include "global.h"
+#include "pub_tool_threadstate.h" // for VG_(get_running_tid)()
 
 /*------------------------------------------------------------*/
 /*--- Basic block (BB) operations                          ---*/
@@ -173,8 +174,6 @@ static BB* new_bb(obj_node* obj, PtrdiffT offset,
    bb->fn          = 0;
    bb->line        = 0;
    bb->is_entry    = 0;
-   bb->bbcc_list   = 0;
-   bb->last_bbcc   = 0;
 
    bb->groups = (InstrGroupInfo*) &(bb->jmp[cjmp_count+1]);
    bb->groups_count = groups_count;
@@ -360,20 +359,285 @@ void LPG_(delete_bb)(Addr addr)
        bp->next = bb->next;
     }
 
-    LPG_DEBUG(3, "  delete_bb (Obj %s, off %#lx): %p, BBCC head: %p\n",
-	      obj->name, (UWord)offset, bb, bb->bbcc_list);
+    LPG_DEBUG(3, "  delete_bb (Obj %s, off %#lx): %p\n",
+	      obj->name, (UWord)offset, bb);
 
-    if (bb->bbcc_list == 0) {
-	/* can be safely deleted */
-
+    // FIXME: We may be using this BB somewhere else.
 	/* Fill the block up with junk and then free it, so we will
 	   hopefully get a segfault if it is used again by mistake. */
 	size = sizeof(BB)
-	    + bb->instr_count * sizeof(InstrInfo)
-	    + (bb->cjmp_count+1) * sizeof(CJmpInfo)
-	    + bb->groups_count * sizeof(InstrGroupInfo);
+		+ bb->instr_count * sizeof(InstrInfo)
+		+ (bb->cjmp_count+1) * sizeof(CJmpInfo)
+		+ bb->groups_count * sizeof(InstrGroupInfo);
 	LPG_DATA_FREE(bb, size);
-	return;
-    }
-    LPG_DEBUG(3, "  delete_bb: BB in use, can not free!\n");
+}
+
+/*
+ * Helper function called at start of each instrumented BB to setup
+ * pointer to costs for current thread/context/recursion level
+ */
+VG_REGPARM(1)
+void LPG_(setup_bb)(BB* bb) {
+	Bool call_emulation = False, delayed_push = False;
+	Addr sp;
+	BB* last_bb;
+	ThreadId tid;
+	LpgJumpKind jmpkind;
+	Bool isConditionalJump;
+	Int passed = 0, p, csp;
+	Bool ret_without_call = False;
+	Int popcount_on_return = 1;
+#ifdef LPG_ENABLE_PATH_CACHE
+	Int idx;
+#endif
+
+	LPG_DEBUG(3, "+ setup_bb(BB %#lx)\n", bb_addr(bb));
+
+	/* This is needed because thread switches can not reliable be tracked
+	 * with callback LPG_(run_thread) only: we have otherwise no way to get
+	 * the thread ID after a signal handler returns.
+	 * This could be removed again if that bug is fixed in Valgrind.
+	 * This is in the hot path but hopefully not to costly.
+	 */
+	tid = VG_(get_running_tid)();
+#if 1
+	/* LPG_(switch_thread) is a no-op when tid is equal to LPG_(current_tid).
+	 * As this is on the hot path, we only call LPG_(switch_thread)(tid)
+	 * if tid differs from the LPG_(current_tid).
+	 */
+	if (UNLIKELY(tid != LPG_(current_tid)))
+		LPG_(switch_thread)(tid);
+#else
+	LPG_ASSERT(VG_(get_running_tid)() == LPG_(current_tid));
+#endif
+
+	sp = VG_(get_SP)(tid);
+	last_bb = LPG_(current_state).bb;
+
+	if (last_bb) {
+		Int group;
+
+		passed = LPG_(current_state).jmps_passed;
+		LPG_ASSERT(passed <= last_bb->cjmp_count);
+
+		jmpkind = last_bb->jmp[passed].jmpkind;
+		isConditionalJump = (passed < last_bb->cjmp_count);
+
+		// The first group was already processed in the end of the previous setup_bbcc.
+		group = 0;
+		for (p = 0; p <= passed; p++) {
+#ifdef LPG_ENABLE_PATH_CACHE
+			idx = last_bb->jmp[p].dst % PATH_CACHE_SIZE;
+			if (!LPG_(current_state).dangling->cache ||
+				LPG_(current_state).dangling->cache->phantom[idx].addr != last_bb->jmp[p].dst ||
+				LPG_(current_state).dangling->cache->phantom[idx].indirect != last_bb->jmp[p].indirect) {
+				LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
+						LPG_(current_state).dangling, last_bb->jmp[p].dst,
+						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
+			}
+#else
+			LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
+					LPG_(current_state).dangling, last_bb->jmp[p].dst,
+					last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
+#endif
+
+			// Only process a new block if it is different from the previous one.
+			if (last_bb->jmp[p].group != group) {
+				// The next group must be immediately after the previous.
+				group++;
+				LPG_ASSERT(group == last_bb->jmp[p].group);
+
+#ifdef LPG_ENABLE_PATH_CACHE
+				idx = last_bb->groups[group].group_addr % PATH_CACHE_SIZE;
+				if (LPG_(current_state).dangling->cache &&
+						LPG_(current_state).dangling->cache->block[idx].from == last_bb->groups[group].group_addr &&
+						LPG_(current_state).dangling->cache->block[idx].size == last_bb->groups[group].group_size) {
+					LPG_(current_state).dangling = LPG_(current_state).dangling->cache->block[idx].to;
+				} else {
+					LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
+							&(LPG_(current_state).dangling), last_bb, group);
+				}
+#else
+				LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
+						&(LPG_(current_state).dangling), last_bb, group);
+#endif
+			}
+		}
+
+		// If there are still jumps in the same group, this means
+		// that they are phantom nodes.
+		while (p <= last_bb->cjmp_count && last_bb->jmp[p].group == group) {
+#ifdef LPG_ENABLE_PATH_CACHE
+			idx = last_bb->jmp[p].dst % PATH_CACHE_SIZE;
+			if (!LPG_(current_state).dangling->cache ||
+				LPG_(current_state).dangling->cache->phantom[idx].addr != last_bb->jmp[p].dst ||
+				LPG_(current_state).dangling->cache->phantom[idx].indirect != last_bb->jmp[p].indirect) {
+				LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
+						LPG_(current_state).dangling, last_bb->jmp[p].dst,
+						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
+			}
+#else
+			LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
+					LPG_(current_state).dangling, last_bb->jmp[p].dst,
+					last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
+#endif
+
+			p++;
+		}
+
+		LPG_DEBUGIF(4) {
+			LPG_(print_execstate)(-2, &LPG_(current_state));
+		}
+	} else {
+		jmpkind = jk_None;
+		isConditionalJump = False;
+
+		LPG_(current_state).cfg = LPG_(get_cfg)(bb->groups[0].group_addr);
+		LPG_(current_state).dangling = 0;
+	}
+
+	/* Manipulate JmpKind if needed, only using BB specific info */
+	csp = LPG_(current_call_stack).sp;
+
+	/* A return not matching the top call in our callstack is a jump */
+	if ((jmpkind == jk_Return) && (csp > 0)) {
+		Int csp_up = csp - 1;
+		call_entry* top_ce = &(LPG_(current_call_stack).entry[csp_up]);
+
+		/* We have a real return if
+		 * - the stack pointer (SP) left the current stack frame, or
+		 * - SP has the same value as when reaching the current function
+		 *   and the address of this BB is the return address of last call
+		 *   (we even allow to leave multiple frames if the SP stays the
+		 *    same and we find a matching return address)
+		 * The latter condition is needed because on PPC, SP can stay
+		 * the same over CALL=b(c)l / RET=b(c)lr boundaries
+		 */
+		if (sp < top_ce->sp)
+			popcount_on_return = 0;
+		else if (top_ce->sp == sp) {
+			while (1) {
+				if (top_ce->ret_addr == bb_addr(bb))
+					break;
+				if (csp_up > 0) {
+					csp_up--;
+					top_ce = &(LPG_(current_call_stack).entry[csp_up]);
+					if (top_ce->sp == sp) {
+						popcount_on_return++;
+						continue;
+					}
+				}
+				popcount_on_return = 0;
+				break;
+			}
+		}
+		if (popcount_on_return == 0) {
+			jmpkind = jk_Jump;
+			ret_without_call = True;
+		}
+	}
+
+	/* Should this jump be converted to call or pop/call ? */
+	if ((jmpkind != jk_Return) && (jmpkind != jk_Call) && last_bb) {
+		/* We simulate a JMP/Cont to be a CALL if
+		 * - jump is in another ELF object or section kind
+		 * - jump is to first instruction of a function (tail recursion)
+		 */
+		if (ret_without_call ||
+		/* This is for detection of optimized tail recursion.
+		 * On PPC, this is only detected as call when going to another
+		 * function. The problem is that on PPC it can go wrong
+		 * more easily (no stack frame setup needed)
+		 */
+#if defined(VGA_ppc32)
+				(bb->is_entry && (last_bb->fn != bb->fn)) ||
+#else
+				bb->is_entry ||
+#endif
+				(last_bb->sect_kind != bb->sect_kind)
+				|| (last_bb->obj->number != bb->obj->number)) {
+
+			LPG_DEBUG(1, "     JMP: %s[%s] to %s[%s]%s!\n", last_bb->fn->name,
+					last_bb->obj->name, bb->fn->name, bb->obj->name,
+					ret_without_call ? " (RET w/o CALL)" : "");
+
+			jmpkind = jk_Call;
+			call_emulation = True;
+		}
+	}
+
+	LPG_DEBUGIF(1) {
+		if (isConditionalJump)
+			VG_(printf)("Cond-");
+		switch (jmpkind) {
+		case jk_None:
+			VG_(printf)("Fall-through");
+			break;
+		case jk_Jump:
+			VG_(printf)("Jump");
+			break;
+		case jk_Call:
+			VG_(printf)("Call");
+			break;
+		case jk_Return:
+			VG_(printf)("Return");
+			break;
+		default:
+			tl_assert(0);
+		}
+		VG_(printf)(" %08lx -> %08lx, SP %08lx\n",
+				last_bb ? bb_jmpaddr(last_bb) : 0, bb_addr(bb), sp);
+	}
+
+	/* Handle CALL/RET and update context to get correct BBCC */
+
+	if (jmpkind == jk_Return) {
+		LPG_ASSERT(csp != 0);
+		LPG_ASSERT(popcount_on_return > 0);
+		LPG_(unwind_call_stack)(sp, popcount_on_return);
+	} else {
+		Int unwind_count = LPG_(unwind_call_stack)(sp, 0);
+		if (unwind_count > 0) {
+			/* if unwinding was done, this actually is a return */
+			jmpkind = jk_Return;
+		}
+
+		if (jmpkind == jk_Call) {
+			delayed_push = True;
+
+			csp = LPG_(current_call_stack).sp;
+			if (call_emulation && csp > 0)
+				sp = LPG_(current_call_stack).entry[csp - 1].sp;
+		}
+	}
+
+	if (delayed_push)
+		LPG_(push_call_stack)(last_bb, passed, bb, sp);
+
+	LPG_(current_state).bb = bb;
+	/* Even though this will be set in instrumented code directly before
+	 * side exits, it needs to be set to 0 here in case an exception
+	 * happens in first instructions of the BB */
+	LPG_(current_state).jmps_passed = 0;
+
+#ifdef LPG_ENABLE_PATH_CACHE
+	idx = bb->groups[0].group_addr % PATH_CACHE_SIZE;
+	if (LPG_(current_state).dangling && LPG_(current_state).dangling->cache &&
+			LPG_(current_state).dangling->cache->block[idx].from == bb->groups[0].group_addr &&
+			LPG_(current_state).dangling->cache->block[idx].size == bb->groups[0].group_size) {
+		LPG_(current_state).dangling = LPG_(current_state).dangling->cache->block[idx].to;
+	} else {
+		LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
+				&(LPG_(current_state).dangling), bb, 0);
+	}
+#else
+	LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
+			&(LPG_(current_state).dangling), bb, 0);
+#endif
+
+	LPG_DEBUG(3,
+			"- setup_bb (BB %#lx): Instrs %u (Len %u)\n",
+			bb_addr(bb), bb->instr_count, bb->instr_len);
+
+	LPG_(stat).bb_executions++;
 }

@@ -28,10 +28,6 @@
 
 #include "global.h"
 
-#define N_INITIAL_FN_ARRAY_SIZE 10071
-
-static fn_array current_fn_active;
-
 static Addr runtime_resolve_addr = 0;
 static int  runtime_resolve_length = 0;
 
@@ -396,8 +392,6 @@ file_node* LPG_(get_file_node)(obj_node* curr_obj_node,
 }
 
 /* forward decl. */
-static void resize_fn_array(void);
-
 static __inline__ 
 fn_node* new_fn_node(const HChar *fnname,
 		     file_node* file, fn_node* next)
@@ -408,8 +402,7 @@ fn_node* new_fn_node(const HChar *fnname,
 
     LPG_(stat).distinct_fns++;
     fn->number   = LPG_(stat).distinct_fns;
-    fn->last_cxt = 0;
-    fn->pure_cxt = 0;
+    fn->visited  = False;
     fn->file     = file;
     fn->next     = next;
 
@@ -420,9 +413,6 @@ fn_node* new_fn_node(const HChar *fnname,
 #if LPG_ENABLE_DEBUG
     fn->verbosity    = -1;
 #endif
-
-    if (LPG_(stat).distinct_fns >= current_fn_active.size)
-	resize_fn_array();
 
     return fn;
 }
@@ -604,7 +594,7 @@ fn_node* LPG_(get_fn_node)(BB* bb)
 
     /* if this is the 1st time the function is seen,
      * some attributes are set */
-    if (fn->pure_cxt == 0) {
+    if (!fn->visited) {
 
       /* Every function gets a "pure" context, i.e. a context with stack
        * depth 1 only with this function. This is for compression of mangled
@@ -613,7 +603,7 @@ fn_node* LPG_(get_fn_node)(BB* bb)
       fn_node* pure[2];
       pure[0] = 0;
       pure[1] = fn;
-      fn->pure_cxt = LPG_(get_cxt)(pure+1);
+      fn->visited = True;
 
       fn->is_malloc  = (VG_(strcmp)(fn->name, "malloc")==0);
       fn->is_realloc = (VG_(strcmp)(fn->name, "realloc")==0);
@@ -632,95 +622,3 @@ fn_node* LPG_(get_fn_node)(BB* bb)
 
     return fn;
 }
-
-
-/*------------------------------------------------------------*/
-/*--- Active function array operations                     ---*/
-/*------------------------------------------------------------*/
-
-/* The active function array is a thread-specific array
- * of UInts, mapping function numbers to the active count of
- * functions.
- * The active count is the number of times a function appears
- * in the current call stack, and is used when costs for recursion
- * levels should be separated.
- */
-
-UInt* LPG_(get_fn_entry)(Int n)
-{
-  LPG_ASSERT(n < current_fn_active.size);
-  return current_fn_active.array + n;
-}
-
-void LPG_(init_fn_array)(fn_array* a)
-{
-  Int i;
-
-  LPG_ASSERT(a != 0);
-
-  a->size = N_INITIAL_FN_ARRAY_SIZE;
-  if (a->size <= LPG_(stat).distinct_fns)
-    a->size = LPG_(stat).distinct_fns+1;
-  
-  a->array = (UInt*) LPG_MALLOC("cl.fn.gfe.1",
-                                a->size * sizeof(UInt));
-  for(i=0;i<a->size;i++)
-    a->array[i] = 0;
-}
-
-void LPG_(destroy_fn_array)(fn_array* a) {
-	LPG_ASSERT(a != 0);
-	LPG_FREE(a->array);
-}
-
-void LPG_(copy_current_fn_array)(fn_array* dst)
-{
-  LPG_ASSERT(dst != 0);
-
-  dst->size  = current_fn_active.size;
-  dst->array = current_fn_active.array;
-}
-
-fn_array* LPG_(get_current_fn_array)()
-{
-  return &current_fn_active;
-}
-
-void LPG_(set_current_fn_array)(fn_array* a)
-{
-  LPG_ASSERT(a != 0);
-
-  current_fn_active.size  = a->size;
-  current_fn_active.array = a->array;
-  if (current_fn_active.size <= LPG_(stat).distinct_fns)
-    resize_fn_array();
-}
-
-/* ensure that active_array is big enough:
- *  <distinct_fns> is the highest index, so <fn_active_array_size>
- *  has to be bigger than that.
- */
-static void resize_fn_array(void)
-{
-    UInt* new_array;
-    Int i;
-
-    UInt newsize = current_fn_active.size;
-    while (newsize <= LPG_(stat).distinct_fns) newsize *=2;
-
-    LPG_DEBUG(0, "Resize fn_active_array: %u => %u\n",
-	     current_fn_active.size, newsize);
-
-    new_array = (UInt*) LPG_MALLOC("cl.fn.rfa.1", newsize * sizeof(UInt));
-    for(i=0;i<current_fn_active.size;i++)
-      new_array[i] = current_fn_active.array[i];
-    while(i<newsize)
-	new_array[i++] = 0;
-
-    LPG_FREE(current_fn_active.array);
-    current_fn_active.size = newsize;
-    current_fn_active.array = new_array;
-    LPG_(stat).fn_array_resizes++;
-}
-
-

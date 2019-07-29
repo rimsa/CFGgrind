@@ -53,42 +53,6 @@ void LPG_(print_bb)(int s, BB* bb)
     VG_(printf)("BB %#lx (Obj '%s')", bb_addr(bb), bb->obj->name);
 }
 
-static
-void print_mangled_cxt(Context* cxt)
-{
-    int i;
-
-    if (!cxt)
-      VG_(printf)("(none)");
-    else {
-      VG_(printf)("%s", cxt->fn[0]->name);
-      for(i=1;i<cxt->size;i++)
-	VG_(printf)("'%s", cxt->fn[i]->name);
-    }
-}
-
-
-
-void LPG_(print_cxt)(Int s, Context* cxt)
-{
-  if (s<0) {
-    s = -s;
-    print_indent(s);
-  }
-  
-  if (cxt) {
-    UInt *pactive = LPG_(get_fn_entry)(cxt->fn[0]->number);
-    VG_(printf)("Cxt %u" ,cxt->base_number);
-    if (*pactive>0)
-      VG_(printf)(" [active=%u]", *pactive);
-    VG_(printf)(": ");	
-    print_mangled_cxt(cxt);
-    VG_(printf)("\n");
-  }
-  else
-    VG_(printf)("(no context)\n");
-}
-
 void LPG_(print_execstate)(int s, exec_state* es)
 {
   if (s<0) {
@@ -103,30 +67,6 @@ void LPG_(print_execstate)(int s, exec_state* es)
 
   VG_(printf)("ExecState [Sig %d]: jmps_passed %d\n",
 	      es->sig, es->jmps_passed);
-}
-
-
-void LPG_(print_bbcc)(int s, BBCC* bbcc)
-{
-  BB* bb;
-
-  if (s<0) {
-    s = -s;
-    print_indent(s);
-  }
-  
-  if (!bbcc) {
-    VG_(printf)("BBCC 0x0\n");
-    return;
-  }
- 
-  bb = bbcc->bb;
-  LPG_ASSERT(bb!=0);
-
-  VG_(printf)("%s +%#lx=%#lx, ",
-	      bb->obj->name + bb->obj->last_slash_pos,
-	      (UWord)bb->offset, bb_addr(bb));
-  LPG_(print_cxt)(s+8, bbcc->cxt);
 }
 
 /* dump out the current call stack */
@@ -154,35 +94,6 @@ static void print_call_stack()
       LPG_(print_stackentry)(-2, c);
 }
 #endif
-
-void LPG_(print_bbcc_fn)(BBCC* bbcc)
-{
-    obj_node* obj;
-
-    if (!bbcc) {
-	VG_(printf)("%08x", 0u);
-	return;
-    }
-
-    VG_(printf)("%08lx/%c  %u:", bb_addr(bbcc->bb), 
-		(bbcc->bb->sect_kind == Vg_SectText) ? 'T' :
-		(bbcc->bb->sect_kind == Vg_SectData) ? 'D' :
-		(bbcc->bb->sect_kind == Vg_SectBSS) ? 'B' :
-		(bbcc->bb->sect_kind == Vg_SectGOT) ? 'G' :
-		(bbcc->bb->sect_kind == Vg_SectPLT) ? 'P' : 'U',
-		bbcc->cxt->base_number);
-    print_mangled_cxt(bbcc->cxt);
-
-    obj = bbcc->cxt->fn[0]->file->obj;
-    if (obj->name[0])
-	VG_(printf)(" %s", obj->name+obj->last_slash_pos);
-
-    if (VG_(strcmp)(bbcc->cxt->fn[0]->file->name, "???") !=0) {
-	VG_(printf)(" %s", bbcc->cxt->fn[0]->file->name);
-	if ((bbcc->cxt->fn[0] == bbcc->bb->fn) && (bbcc->bb->line>0))
-	    VG_(printf)(":%u", bbcc->bb->line);
-    }
-}	
 
 /* dump out an address with source info if available */
 void LPG_(print_addr)(Addr addr)
@@ -240,14 +151,6 @@ void LPG_(print_bbno)(void)
   }
 }
 
-void LPG_(print_context)(void)
-{
-  LPG_DEBUG(0,"In tid %u [%d] ",
-	   LPG_(current_tid),  LPG_(current_call_stack).sp);
-  print_mangled_cxt(LPG_(current_state).cxt);
-  VG_(printf)("\n");
-}
-
 #if LPG_DEBUG_MEM
 void* LPG_(malloc)(const HChar* cc, UWord s, const HChar* f) {
 	void* p;
@@ -292,11 +195,7 @@ HChar* LPG_(strdup)(const HChar* cc, const HChar* s, const HChar* f) {
 #else /* LPG_ENABLE_DEBUG */
 
 void LPG_(print_bbno)(void) {}
-void LPG_(print_context)(void) {}
-void LPG_(print_bbcc)(int s, BBCC* bbcc) {}
-void LPG_(print_bbcc_fn)(BBCC* bbcc) {}
 void LPG_(print_bb)(int s, BB* bb) {}
-void LPG_(print_cxt)(int s, Context* cxt) {}
 void LPG_(print_stackentry)(int s, int sp) {}
 void LPG_(print_addr)(Addr addr) {}
 void LPG_(print_addr_ln)(Addr addr) {}

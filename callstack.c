@@ -55,7 +55,6 @@ void LPG_(init_call_stack)(call_stack* s)
   s->entry = (call_entry*) LPG_MALLOC("cl.callstack.ics.1",
                                       s->size * sizeof(call_entry));
   s->sp = 0;
-  s->entry[0].cxt = 0; /* for assertion in push_cxt() */
 
   for(i=0; i<s->size; i++) {
 	  s->entry[i].cfg = 0;
@@ -126,7 +125,7 @@ void ensure_stack_size(Int i)
  * Increment the usage count for the function called.
  * A jump from <from> to <to>, with <sp>.
  */
-void LPG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp)
+void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 {
     call_entry* current_entry;
     Addr ret_addr;
@@ -139,22 +138,18 @@ void LPG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp)
     ensure_stack_size(LPG_(current_call_stack).sp +1);
     current_entry = &(LPG_(current_call_stack).entry[LPG_(current_call_stack).sp]);
 
-	/* As push_cxt() has to be called before push_call_stack,
-	 * the old context should already be saved on the stack */
-	LPG_ASSERT(current_entry->cxt != 0);
-
     /* return address is only is useful with a real call;
      * used to detect RET w/o CALL */
-    if (from->bb->jmp[jmp].jmpkind == jk_Call) {
-		UInt instr = from->bb->jmp[jmp].instr;
-		ret_addr = bb_addr(from->bb) +
-		from->bb->instr[instr].instr_offset +
-		from->bb->instr[instr].instr_size;
+    if (from->jmp[jmp].jmpkind == jk_Call) {
+		UInt instr = from->jmp[jmp].instr;
+		ret_addr = bb_addr(from) +
+						from->instr[instr].instr_offset +
+						from->instr[instr].instr_size;
     } else {
     		ret_addr = 0;
     }
 
-    callee = LPG_(get_cfg)(to->bb->groups[0].group_addr);
+    callee = LPG_(get_cfg)(to->groups[0].group_addr);
 
 	// Let's update the fdesc if it is our first real call to it.
 	if (!LPG_(cfg_fdesc)(callee))
@@ -163,13 +158,13 @@ void LPG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp)
 #ifdef LPG_ENABLE_PATH_CACHE
 	if (!LPG_(current_state).dangling->cache ||
 		LPG_(current_state).dangling->cache->call.cfg != callee ||
-		LPG_(current_state).dangling->cache->call.indirect != from->bb->jmp[jmp].indirect) {
+		LPG_(current_state).dangling->cache->call.indirect != from->jmp[jmp].indirect) {
 		LPG_(cfgnode_set_call)(LPG_(current_state).cfg, LPG_(current_state).dangling,
-				callee, from->bb->jmp[jmp].indirect);
+				callee, from->jmp[jmp].indirect);
 	}
 #else
 	LPG_(cfgnode_set_call)(LPG_(current_state).cfg, LPG_(current_state).dangling,
-			callee, from->bb->jmp[jmp].indirect);
+			callee, from->jmp[jmp].indirect);
 #endif
 
     /* put jcc on call stack */
@@ -184,7 +179,6 @@ void LPG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp)
     LPG_ASSERT(LPG_(current_call_stack).sp < LPG_(current_call_stack).size);
     current_entry++;
 
-    current_entry->cxt = 0;
     current_entry->cfg = 0;
     current_entry->dangling = 0;
 
@@ -216,14 +210,6 @@ void LPG_(pop_call_stack)(Bool halt) {
 
     LPG_DEBUG(4,"+ pop_call_stack: frame %d\n",
 		LPG_(current_call_stack).sp);
-
-    /* restore context */
-    LPG_(current_state).cxt = lower_entry->cxt;
-    LPG_(current_fn_stack).top = LPG_(current_fn_stack).bottom + lower_entry->fn_sp;
-    LPG_ASSERT(LPG_(current_state).cxt != 0);
-
-    /* To allow for an assertion in push_call_stack() */
-    lower_entry->cxt = 0;
 
 	if (halt) {
 		LPG_(cfgnode_set_halt)(LPG_(current_state).cfg, &(LPG_(current_state).dangling));
