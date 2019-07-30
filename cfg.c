@@ -1295,7 +1295,7 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	UInt bb_idx, size;
 	InstrGroupInfo group;
 	Int accumulated_size;
-	CfgInstrRef* last_ref;
+	CfgInstrRef* curr_ref;
 
 	LPG_ASSERT(cfg != 0);
 	LPG_ASSERT(dangling != 0);
@@ -1311,21 +1311,30 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	base_addr = bb_addr(bb);
 
 	// Last processed instruction for this group.
-	last_ref = 0;
+	curr_ref = 0;
 
 	accumulated_size = 0;
 	while (accumulated_size < group.group_size) {
-		LPG_ASSERT(bb_idx < bb->instr_count);
-		addr = base_addr + bb->instr[bb_idx].instr_offset;
-		size = bb->instr[bb_idx].instr_size;
+		CfgInstrRef* next;
 
-		if (last_ref && !ref_is_tail(last_ref)) {
-			// FIXME: Process entire group if possible here.
-			LPG_ASSERT(last_ref->next->instr->addr == addr);
-			LPG_ASSERT(last_ref->next->instr->size == size);
-			last_ref = last_ref->next;
+		if (curr_ref) {
+			do {
+				LPG_ASSERT(bb_idx < bb->instr_count);
+				addr = base_addr + bb->instr[bb_idx].instr_offset;
+				size = bb->instr[bb_idx].instr_size;
+
+				LPG_ASSERT(curr_ref->instr->addr == addr);
+				LPG_ASSERT(curr_ref->instr->size == size);
+
+				accumulated_size += size;
+				bb_idx++;
+
+				curr_ref = curr_ref->next;
+			} while (curr_ref && accumulated_size < group.group_size);
 		} else {
-			CfgInstrRef* next;
+			LPG_ASSERT(bb_idx < bb->instr_count);
+			addr = base_addr + bb->instr[bb_idx].instr_offset;
+			size = bb->instr[bb_idx].instr_size;
 
 			// If we have a successor with this address.
 			if ((next = get_succ_instr(cfg, dangling, addr))) {
@@ -1347,9 +1356,10 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 				dangling = next->node;
 			} else {
 				next = new_instr_ref(LPG_(get_instr)(addr, size));
-				if (last_ref &&
-					!cfgnode_has_successors(dangling) &&
-					!cfgnode_has_calls(dangling)) {
+				// Check if we can append the instrution reference in the dangling block.
+				if (dangling->type == CFG_BLOCK &&
+					(dangling->data.block->instrs.tail->instr->addr + dangling->data.block->instrs.tail->instr->size) == addr &&
+					!cfgnode_has_successors(dangling) && !cfgnode_has_calls(dangling)) {
 					cfgnode_add_ref(cfg, dangling, next);
 				} else {
 					CfgNode* node = new_cfgnode_block(cfg, next);
@@ -1358,20 +1368,13 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 				}
 			}
 
-			last_ref = next;
+			curr_ref = next;
 		}
-
-		LPG_ASSERT(last_ref != 0);
-		accumulated_size += last_ref->instr->size;
-		bb_idx++;
 	}
-
 	LPG_ASSERT(accumulated_size == group.group_size);
 
-	if (!ref_is_tail(last_ref))
-		dangling = cfgnode_split(cfg, last_ref->next);
-	else
-		LPG_ASSERT(dangling == last_ref->node);
+	if (curr_ref && !ref_is_tail(curr_ref))
+		dangling = cfgnode_split(cfg, curr_ref->next);
 
 	return dangling;
 }
