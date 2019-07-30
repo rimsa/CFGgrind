@@ -26,6 +26,14 @@ struct _CFG {
 	CFG* chain;				// entry chain in hash
 };
 
+typedef struct _CfgInstrRef	CfgInstrRef;
+struct _CfgInstrRef {
+	UniqueInstr* instr;	// The instruction itself.
+	CfgNode* node;		// Reference to the CFG node.
+
+	CfgInstrRef* next;	// Next instruction in block. Nil if last.
+};
+
 typedef struct _CfgBlock CfgBlock;
 struct _CfgBlock {
 	Addr addr;
@@ -57,8 +65,8 @@ struct _CfgNode {
 			SmartList* nodes;	/* SmartList<CfgNode*> */
 			BitSet* flags;		/* For each node, if it is virtual (set bit) or not (clear bit) */
 		} successors, predecessors;
-		SmartList* dominators;
 
+		SmartList* dominators;
 		CfgNode* idom; 			// imediate dominator
 	} info;
 
@@ -117,12 +125,6 @@ CfgInstrRef* new_instr_ref(UniqueInstr* instr) {
 static __inline__
 void delete_instr_ref(CfgInstrRef* ref) {
 	LPG_ASSERT(ref != 0);
-
-#ifdef LPG_ENABLE_PATH_CACHE
-	if (ref->cache)
-		LPG_DATA_FREE(ref->cache, sizeof(CfgPathCache));
-#endif
-
 	LPG_DATA_FREE(ref, sizeof(CfgInstrRef));
 }
 
@@ -608,29 +610,15 @@ void delete_cfgnode(CfgNode* node) {
 
 static __inline__
 Bool ref_is_head(CfgInstrRef* ref) {
-	return ref && ref->node && ref->node->type == CFG_BLOCK &&
-			ref == ref->node->data.block->instrs.leader;
+	LPG_ASSERT(ref && ref->node && ref->node->type == CFG_BLOCK);
+	return ref == ref->node->data.block->instrs.leader;
 }
 
 static __inline__
 Bool ref_is_tail(CfgInstrRef* ref) {
-	return ref && ref->node && ref->node->type == CFG_BLOCK &&
-			ref == ref->node->data.block->instrs.tail;
+	LPG_ASSERT(ref && ref->node && ref->node->type == CFG_BLOCK);
+	return ref == ref->node->data.block->instrs.tail;
 }
-
-#ifdef LPG_ENABLE_PATH_CACHE
-static __inline__
-CfgPathCache* ref_pathcache(CfgInstrRef* last) {
-	LPG_ASSERT(last != 0);
-
-	if (!last->cache) {
-		last->cache = (CfgPathCache*) LPG_MALLOC("lg.cfg.rp.1", sizeof(CfgPathCache));
-		VG_(memset)(last->cache, 0, sizeof(CfgPathCache));
-	}
-
-	return last->cache;
-}
-#endif
 
 static
 Bool has_node_call(CfgNode* node, CFG* call) {
@@ -770,68 +758,62 @@ static
 CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	Int i, size;
 	CfgNode* node;
-	CfgNode* new_node;
+	CfgNode* pred;
+	CfgInstrRef* first;
 	CfgInstrRef* last;
 
 	LPG_ASSERT(cfg != 0);
 	LPG_ASSERT(ref != 0);
-	LPG_ASSERT(ref->node != 0 && ref->node->type == CFG_BLOCK);
+
+	node = ref->node;
 	LPG_ASSERT(!ref_is_head(ref));
 
-	// Get the current node.
-	node = ref->node;
-
-	// Find the last instruction before split instruction.
-	last = node->data.block->instrs.leader;
-	LPG_ASSERT(last != 0)
+	first = last = node->data.block->instrs.leader;
 	while (last->next != ref) {
+		// Account for the removal of the current instruction
+		// (last at this iteration).
+		node->data.block->size -= last->instr->size;
+		node->data.block->instrs.count--;
+
 		last = last->next;
 		LPG_ASSERT(last != 0);
 	}
 
-	// Create the new node.
-	new_node = new_cfgnode_block(cfg, ref);
+	// Update the node with the new leader.
+	node->data.block->addr = ref->instr->addr;
+	node->data.block->size -= last->instr->size;
+	node->data.block->instrs.leader = ref;
+	node->data.block->instrs.count--;
 
-	// Fix the previous node.
+	// Create a new predecessor node with the first reference until the last.
 	last->next = 0;
-	node->data.block->instrs.tail = last;
-	node->data.block->size -= new_node->data.block->size;
-	node->data.block->instrs.count -= new_node->data.block->instrs.count;
+	pred = new_cfgnode_block(cfg, first);
 
-	// If there was a call in the block, transfer to the new one.
-	new_node->data.block->calls = node->data.block->calls;
-	node->data.block->calls = 0;
+	// Move the predecessors of node to pred, including the flags.
+	LPG_(smart_list_copy)(pred->info.predecessors.nodes, node->info.predecessors.nodes);
+	LPG_(smart_list_clear)(node->info.predecessors.nodes, 0);
+	LPG_(bitset_copy)(pred->info.predecessors.flags, node->info.predecessors.flags);
+	LPG_(bitset_clear)(node->info.predecessors.flags);
 
-	// If there was an indirection in the block, transfer to the new one.
-	new_node->data.block->indirect = node->data.block->indirect;
-	node->data.block->indirect = False;
-
-	// Transfer the sucessors to the new node and connect them.
-	LPG_(smart_list_copy)(new_node->info.successors.nodes, node->info.successors.nodes);
-	LPG_(smart_list_clear)(node->info.successors.nodes, 0);
-	LPG_(bitset_copy)(new_node->info.successors.flags, node->info.successors.flags);
-	LPG_(bitset_clear)(node->info.successors.flags);
-	add_edge2nodes(cfg, node, new_node, False);
-
-	// Fix the predecessors of the successors to the new node.
-	LPG_ASSERT(new_node->info.successors.nodes != 0);
-	size = LPG_(smart_list_count)(new_node->info.successors.nodes);
+	// Fix the predecessor's successors.
+	LPG_ASSERT(pred->info.predecessors.nodes != 0);
+	size = LPG_(smart_list_count)(pred->info.predecessors.nodes);
 	for (i = 0; i < size; i++) {
 		Int j, size2;
 		CfgNode* tmp;
 
-		tmp = (CfgNode*) LPG_(smart_list_at)(new_node->info.successors.nodes, i);
+		tmp = (CfgNode*) LPG_(smart_list_at)(pred->info.predecessors.nodes, i);
 		LPG_ASSERT(tmp != 0);
 
-		LPG_ASSERT(tmp->info.predecessors.nodes != 0);
-		size2 = LPG_(smart_list_count)(tmp->info.predecessors.nodes);
+		LPG_ASSERT(tmp->info.successors.nodes != 0);
+		size2 = LPG_(smart_list_count)(tmp->info.successors.nodes);
 		for (j = 0; j < size2; j++) {
-			CfgNode* tmp2 = (CfgNode*) LPG_(smart_list_at)(tmp->info.predecessors.nodes, j);
+			CfgNode* tmp2 = (CfgNode*) LPG_(smart_list_at)(tmp->info.successors.nodes, j);
 			LPG_ASSERT(tmp2 != 0);
 
 			// Update the node and finish the search.
 			if (LPG_(cfgnodes_cmp)(tmp2, node)) {
-				LPG_(smart_list_set)(tmp->info.predecessors.nodes, j, new_node);
+				LPG_(smart_list_set)(tmp->info.successors.nodes, j, pred);
 				// Do not update the flags of this predecessor, since it should be mantained the same.
 				break;
 			}
@@ -841,8 +823,11 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 		LPG_ASSERT(j < size2);
 	}
 
-	// Return the new node.
-	return new_node;
+	// Finally, connect both nodes.
+	add_edge2nodes(cfg, pred, node, False);
+
+	// Return the created predecessor.
+	return pred;
 }
 
 static
@@ -1184,25 +1169,19 @@ Bool LPG_(cfgnode_is_indirect)(CfgNode* node) {
 }
 
 Bool LPG_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr) {
-	LPG_ASSERT(node != 0);
+	Int i, size;
+
+	LPG_ASSERT(node != 0 && node->type == CFG_BLOCK);
 	LPG_ASSERT(addr != 0);
 
-	if (node->type == CFG_BLOCK) {
-		Int i, size;
-		CfgBlock* block;
+	if (node->data.block->calls) {
+		size = LPG_(smart_list_count)(node->data.block->calls);
+		for (i = 0; i < size; i++) {
+			CFG* cfg = (CFG*) LPG_(smart_list_at)(node->data.block->calls, i);
+			LPG_ASSERT(cfg != 0);
 
-		block = node->data.block;
-		LPG_ASSERT(block != 0);
-
-		if (block->calls) {
-			size = LPG_(smart_list_count)(block->calls);
-			for (i = 0; i < size; i++) {
-				CFG* cfg = (CFG*) LPG_(smart_list_at)(block->calls, i);
-				LPG_ASSERT(cfg != 0);
-
-				if (cfg->addr == addr)
-					return True;
-			}
+			if (cfg->addr == addr)
+				return True;
 		}
 	}
 
@@ -1254,12 +1233,8 @@ Bool cfgnode_has_calls(CfgNode* node) {
 }
 
 static __inline__
-CfgInstrRef* get_succ_instr(CFG* cfg, CfgInstrRef* previous, Addr next_addr) {
+CfgInstrRef* get_succ_instr(CFG* cfg, CfgNode* from, Addr addr) {
 	Int i, size;
-	CfgNode* from;
-
-	// Get where are the coming from.
-	from = previous ? previous->node : cfg->entry;
 
 	LPG_ASSERT(from->info.successors.nodes != 0);
 	size = LPG_(smart_list_count)(from->info.successors.nodes);
@@ -1285,21 +1260,12 @@ CfgInstrRef* get_succ_instr(CFG* cfg, CfgInstrRef* previous, Addr next_addr) {
 		}
 
 		// Check if the successors head instruction matches the next address.
-		if (ref != 0 && 	ref->instr->addr == next_addr)
+		if (ref != 0 && 	ref->instr->addr == addr)
 			return ref;
 	}
 
 	// Otherwise it is not found.
 	return 0;
-}
-
-static __inline__
-CfgInstrRef* get_seq_instr(CFG* cfg, CfgInstrRef* previous, Addr next_addr) {
-	// If the previous instruction is not the last in the block,
-	// check if the next address is immediately after it.
-	return (previous && previous->next != 0 &&
-			previous->next->instr->addr == next_addr) ?
-				previous->next : 0;
 }
 
 static
@@ -1324,184 +1290,99 @@ void phantom2block(CFG* cfg, CfgNode* node, Int new_size) {
 	cfg->stats.phantoms--;
 }
 
-void LPG_(cfgnode_set_block)(CFG* cfg, CfgInstrRef** last, BB* bb, Int group_offset) {
+CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_offset) {
 	Addr base_addr, addr;
-	UInt bb_idx;
+	UInt bb_idx, size;
 	InstrGroupInfo group;
 	Int accumulated_size;
-#ifdef LPG_ENABLE_PATH_CACHE
-	Int idx;
-	CfgPathCache* cache;
-#endif
+	CfgInstrRef* last_ref;
 
 	LPG_ASSERT(cfg != 0);
-	LPG_ASSERT(last != 0);
+	LPG_ASSERT(dangling != 0);
+	LPG_ASSERT(dangling->type == CFG_ENTRY || dangling->type == CFG_BLOCK);
 	LPG_ASSERT(bb != 0);
 
 	// Get the group.
 	LPG_ASSERT(group_offset >= 0 && group_offset < bb->groups_count);
 	group = bb->groups[group_offset];
 
-#ifdef LPG_ENABLE_PATH_CACHE
-	if (*last) {
-		idx = group.group_addr % PATH_CACHE_SIZE;
-		cache = ref_pathcache(*last);
-		cache->block[idx].from = group.group_addr;
-		cache->block[idx].size = group.group_size;
-	} else {
-		cache = 0;
-	}
-#endif
-
 	// Find the first instruction index.
 	bb_idx = group.bb_info.first_instr;
 	base_addr = bb_addr(bb);
 
+	// Last processed instruction for this group.
+	last_ref = 0;
+
 	accumulated_size = 0;
 	while (accumulated_size < group.group_size) {
-		CfgInstrRef* next;
-
 		LPG_ASSERT(bb_idx < bb->instr_count);
 		addr = base_addr + bb->instr[bb_idx].instr_offset;
+		size = bb->instr[bb_idx].instr_size;
 
-		if ((next = get_succ_instr(cfg, *last, addr))) {
-			CfgNode* node = next->node;
-
-			// Transform if phantom to block.
-			if (node->type == CFG_PHANTOM)
-				phantom2block(cfg, node, bb->instr[bb_idx].instr_size);
-
-			// Make this edge as not virtual.
-			if (*last)
-				add_edge2nodes(cfg, (*last)->node, node, False);
+		if (last_ref && !ref_is_tail(last_ref)) {
+			// FIXME: Process entire group if possible here.
+			LPG_ASSERT(last_ref->next->instr->addr == addr);
+			LPG_ASSERT(last_ref->next->instr->size == size);
+			last_ref = last_ref->next;
 		} else {
-			next = get_seq_instr(cfg, *last, addr);
-		}
+			CfgInstrRef* next;
 
-		// If there is a block for the next instruction, then
-		// we just need to follow it.
-		if (next) {
-			LPG_ASSERT(next->node->type == CFG_BLOCK);
+			// If we have a successor with this address.
+			if ((next = get_succ_instr(cfg, dangling, addr))) {
+				// If it is a phantom, convert it to a block.
+				if (next->node->type == CFG_PHANTOM)
+					phantom2block(cfg, next->node, size);
 
-			// If the instruction is the first in the block and its size
-			// matches the group size, then try to skip it.
-			if (ref_is_head(next) &&
-				((accumulated_size + next->node->data.block->size) <= group.group_size)) {
-				accumulated_size += next->node->data.block->size;
-				bb_idx += next->node->data.block->instrs.count;
+				LPG_ASSERT(ref_is_head(next));
+				dangling = next->node;
+			// Otherwise, check if this address already exists somewhere else in the CFG.
+			} else if ((next = cfg_instr_find(cfg, addr))) {
+				if (next->node->type == CFG_PHANTOM)
+					phantom2block(cfg, next->node, size);
+				else if (!ref_is_head(next))
+					cfgnode_split(cfg, next);
 
-				*last = next->node->data.block->instrs.tail;
-			// Otherwise, step each instruction independently.
+				LPG_ASSERT(ref_is_head(next));
+				add_edge2nodes(cfg, dangling, next->node, False);
+				dangling = next->node;
 			} else {
-				Bool has_more;
-
-				*last = next;
-				do {
-//					LPG_ASSERT(bb_idx < bb->instr_count);
-//					LPG_ASSERT((*last)->instr->addr == (base_addr + bb->instr[bb_idx].instr_offset) &&
-//							(*last)->instr->size == bb->instr[bb_idx].instr_size);
-
-					accumulated_size += (*last)->instr->size;
-					bb_idx++;
-
-					// Check if should process the next instruction: (1) it is in the group; and
-					// (2) there are other instructions in the node (we are not in the end of it).
-					has_more = accumulated_size < group.group_size && (*last)->next != 0;
-					if (has_more)
-						*last = (*last)->next;
-				} while (has_more);
-			}
-			LPG_ASSERT(*last != 0);
-		// If there is not the next instruction, this means we need to
-		// create a new one for it.
-		} else {
-			CfgNode* new_node;
-
-			// Ensure that we are in the end of the block.
-			LPG_ASSERT(!*last || ref_is_tail(*last));
-
-			// If there is already the next instruction in the CFG,
-			// it means we just need to connect the previous block to it.
-			if ((next = cfg_instr_find(cfg, addr))) {
-				LPG_ASSERT(*last != 0);
-
-				// If the next instruction is in the middle of a block,
-				// we need to split it to create a new block
-				// with this instruction as leader.
-				if (next->node->type == CFG_BLOCK &&
-					!ref_is_head(next)) {
-					// Split the block and get the new reference.
-					new_node = cfgnode_split(cfg, next);
-					next = new_node->data.block->instrs.leader;
-				}
-
-				// Connect the nodes.
-				add_edge2nodes(cfg, (*last)->node, next->node, False);
-
-				// Don't update the bb_idx and last reference, since it will be handled
-				// in the next iteration.
-
-			// If the instruction does not exist in the CFG, then there are two options:
-			// we can append to the last block or create a new one.
-			} else {
-				// Create the new reference for this instruction.
-				LPG_ASSERT(bb_idx < bb->instr_count);
-				next = new_instr_ref(LPG_(get_instr)(addr, bb->instr[bb_idx].instr_size));
-
-				// Check if we can append the next instruction in the last block:
-				// it must not be the fist instruction in the block (trust that valgrind
-				// is separating the blocks correctly); and
-				// it must be immediately after and the block can not have
-				// any successors and/or any calls to other blocks.
-				if (bb_idx > 0 && *last && ((*last)->instr->addr + (*last)->instr->size) == addr &&
-				    !cfgnode_has_successors((*last)->node) && !cfgnode_has_calls((*last)->node)) {
-					// Append the reference to the block.
-					cfgnode_add_ref(cfg, (*last)->node, next);
-				// Otherwise we need to create a new block for it.
+				next = new_instr_ref(LPG_(get_instr)(addr, size));
+				if (last_ref &&
+					!cfgnode_has_successors(dangling) &&
+					!cfgnode_has_calls(dangling)) {
+					cfgnode_add_ref(cfg, dangling, next);
 				} else {
-					// Check that there is no prior call to this address.
-					if (*last)
-						LPG_ASSERT(!LPG_(cfgnode_has_call_with_addr)((*last)->node, addr));
-
-					// Create the block and connect it.
-					new_node = new_cfgnode_block(cfg, next);
-					add_edge2nodes(cfg, *last ? (*last)->node : cfg->entry, new_node, False);
+					CfgNode* node = new_cfgnode_block(cfg, next);
+					add_edge2nodes(cfg, dangling, node, False);
+					dangling = node;
 				}
-
-				// Account this instruction for next iteration.
-				accumulated_size += next->instr->size;
-				bb_idx++;
-
-				// Set the last from this point on.
-				*last = next;
 			}
+
+			last_ref = next;
 		}
+
+		LPG_ASSERT(last_ref != 0);
+		accumulated_size += last_ref->instr->size;
+		bb_idx++;
 	}
+
 	LPG_ASSERT(accumulated_size == group.group_size);
 
-#ifdef LPG_ENABLE_PATH_CACHE
-	if (cache)
-		cache->block[idx].to = *last;
-#endif
+	if (!ref_is_tail(last_ref))
+		dangling = cfgnode_split(cfg, last_ref->next);
+	else
+		LPG_ASSERT(dangling == last_ref->node);
+
+	return dangling;
 }
 
-void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgInstrRef* last, Addr to,
+void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 			LpgJumpKind jmpkind, Bool indirect) {
 	CfgInstrRef* next;
-#ifdef LPG_ENABLE_PATH_CACHE
-	Int idx;
-	CfgPathCache* cache;
-#endif
 
 	LPG_ASSERT(cfg != 0);
-	LPG_ASSERT(last != 0);
-
-#ifdef LPG_ENABLE_PATH_CACHE
-	idx = to % PATH_CACHE_SIZE;
-	cache = ref_pathcache(last);
-	cache->phantom[idx].addr = to;
-	cache->phantom[idx].indirect = indirect;
-#endif
+	LPG_ASSERT(dangling != 0);
+	LPG_ASSERT(dangling->type == CFG_BLOCK);
 
 	switch (jmpkind) {
 		case jk_None:
@@ -1510,7 +1391,7 @@ void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgInstrRef* last, Addr to,
 			if (indirect) {
 				// Mark the indirection and ignore the rest of code,
 				// since we won't be able to create a phantom node for it.
-				mark_indirect(cfg, last->node);
+				mark_indirect(cfg, dangling);
 				return;
 			}
 
@@ -1530,26 +1411,23 @@ void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgInstrRef* last, Addr to,
 	LPG_ASSERT(indirect == False);
 
 	// Ignore the phantom node if there is a call to this address.
-	if (LPG_(cfgnode_has_call_with_addr)(last->node, to))
+	if (LPG_(cfgnode_has_call_with_addr)(dangling, to))
 		return;
 
-	// Check if the next address is already connected to the last block.
-	if (!(next = get_succ_instr(cfg, last, to))) {
+	// Get the successor if it has the leader with address "to"
+	next = get_succ_instr(cfg, dangling, to);
+
+	// If it is not existant, take some actions.
+	if (!next) {
 		// If there is no next instruction, check if the address
 		// is already present in another part of the code.
 		if ((next = cfg_instr_find(cfg, to))) {
 			// Check if we need to split it: only if it is
 			// a block node and the instruction is not the first.
-			if (next->node->type == CFG_BLOCK &&
-				!ref_is_head(next)) {
+			if (next->node->type == CFG_BLOCK && !ref_is_head(next))
 				// Split the block and get the new reference.
-				CfgNode* new_node = cfgnode_split(cfg, next);
-				next = new_node->data.block->instrs.leader;
-			}
+				cfgnode_split(cfg, next);
 		} else {
-			// Ensure that we are in the end of the block.
-			LPG_ASSERT(ref_is_tail(last));
-
 			// If the instruction is new, we need to create
 			// a phantom node for it.
 			next = new_instr_ref(LPG_(get_instr)(to, 0));
@@ -1557,33 +1435,20 @@ void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgInstrRef* last, Addr to,
 		}
 
 		// Connect the nodes with a virtual edge.
-		add_edge2nodes(cfg, last->node, next->node, True);
+		add_edge2nodes(cfg, dangling, next->node, True);
 	}
 }
 
-void LPG_(cfgnode_set_call)(CFG* cfg, CfgInstrRef* last, CFG* call, Bool indirect) {
-#ifdef LPG_ENABLE_PATH_CACHE
-	CfgPathCache* cache;
-#endif
-
+void LPG_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirect) {
 	LPG_ASSERT(cfg != 0);
-	LPG_ASSERT(last != 0);
-	LPG_ASSERT(last->node != 0 && last->node->type == CFG_BLOCK);
+	LPG_ASSERT(dangling != 0);
+	LPG_ASSERT(dangling->type == CFG_BLOCK);
 	LPG_ASSERT(call != 0);
 
-	// Ensure that we are in the end of the block.
-	LPG_ASSERT(ref_is_tail(last));
-
-#ifdef LPG_ENABLE_PATH_CACHE
-	cache = ref_pathcache(last);
-	cache->call.cfg = call;
-	cache->call.indirect = indirect;
-#endif
-
 	if (indirect)
-		mark_indirect(cfg, last->node);
+		mark_indirect(cfg, dangling);
 
-	if (cfgnode_add_call(cfg, last->node, call)) {
+	if (cfgnode_add_call(cfg, dangling, call)) {
 		// If we are adding a call to a CFG that is inside main,
 		// mark the called CFG as inside main as well.
 		if (cfg->inside_main)
@@ -1591,43 +1456,24 @@ void LPG_(cfgnode_set_call)(CFG* cfg, CfgInstrRef* last, CFG* call, Bool indirec
 	}
 }
 
-void LPG_(cfgnode_set_exit)(CFG* cfg, CfgInstrRef** last) {
-#ifdef LPG_ENABLE_PATH_CACHE
-	CfgPathCache* cache;
-#endif
-
+CfgNode* LPG_(cfgnode_set_exit)(CFG* cfg, CfgNode* dangling) {
 	LPG_ASSERT(cfg != 0);
-	LPG_ASSERT(last != 0);
-	LPG_ASSERT(*last != 0 && (*last)->node != 0 && (*last)->node->type == CFG_BLOCK);
-
-	// Ensure that we are in the end of the block.
-	LPG_ASSERT(ref_is_tail(*last));
-
-#ifdef LPG_ENABLE_PATH_CACHE
-	cache = ref_pathcache(*last);
-	cache->exit = True;
-#endif
+	LPG_ASSERT(dangling != 0);
+	LPG_ASSERT(dangling->type == CFG_BLOCK);
 
 	// Add the node if it is does not exist yet.
-	add_edge2nodes(cfg, (*last)->node, cfgnode_exit(cfg), False);
-
-	// At the end of the block there is no last instruction.
-	*last = 0;
+	add_edge2nodes(cfg, dangling, cfgnode_exit(cfg), False);
+	return cfg->exit;
 }
 
-void LPG_(cfgnode_set_halt)(CFG* cfg, CfgInstrRef** last) {
+CfgNode* LPG_(cfgnode_set_halt)(CFG* cfg, CfgNode* dangling) {
 	LPG_ASSERT(cfg != 0);
-	LPG_ASSERT(last != 0);
-	LPG_ASSERT(*last != 0 && (*last)->node != 0 && (*last)->node->type == CFG_BLOCK);
-
-	// Ensure that we are in the end of the block.
-	LPG_ASSERT(ref_is_tail(*last));
+	LPG_ASSERT(dangling != 0);
+	LPG_ASSERT(dangling->type == CFG_BLOCK);
 
 	// Add the node if it is does not exist yet.
-	add_edge2nodes(cfg, (*last)->node, cfgnode_halt(cfg), False);
-
-	// At the end of the block there is no last instruction.
-	*last = 0;
+	add_edge2nodes(cfg, dangling, cfgnode_halt(cfg), False);
+	return cfg->halt;
 }
 
 void LPG_(clean_visited_cfgnodes)(CFG* cfg) {

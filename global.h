@@ -57,8 +57,6 @@
 #define LPG_ENABLE_DEBUG	1
 #define LPG_DEBUG_MEM	0
 
-#define LPG_ENABLE_PATH_CACHE
-
 /* Syscall Timing in microseconds? 
  * (define to 0 if you get compile errors) */
 #define LPG_MICROSYSTIME 0
@@ -155,8 +153,6 @@ typedef struct _thread_info			thread_info;
 typedef struct _BitSet				BitSet;
 typedef struct _CFG					CFG;
 typedef struct _CfgNode				CfgNode;
-typedef struct _CfgInstrRef			CfgInstrRef;
-typedef struct _CfgPathCache 		CfgPathCache;
 typedef struct _FunctionDesc			FunctionDesc;
 typedef struct _SmartHash			SmartHash;
 typedef struct _SmartSeek			SmartSeek;
@@ -184,36 +180,6 @@ struct _UniqueInstr {
 	HChar* name;
 	InstrDesc* desc;
 };
-
-#define PATH_CACHE_SIZE 2
-struct _CfgPathCache {
-	struct {
-		Addr from;
-		Addr size;
-		CfgInstrRef* to;
-	} block[PATH_CACHE_SIZE];
-	struct {
-		Addr addr;
-		Bool indirect;
-	} phantom[PATH_CACHE_SIZE];
-	struct {
-		CFG* cfg;
-		Bool indirect;
-	} call;
-	Bool exit;
-};
-
-struct _CfgInstrRef {
-	UniqueInstr* instr;	// The instruction itself.
-	CfgNode* node;		// Reference to the CFG node.
-
-	CfgInstrRef* next;	// Next instruction in block. Nil if last.
-
-#ifdef LPG_ENABLE_PATH_CACHE
-	CfgPathCache* cache;	// Follow path cache.
-#endif
-};
-
 
 /* 
  * Info for one instruction of a basic block.
@@ -343,7 +309,7 @@ struct _call_entry {
 			 * is 0 on a simulated call */
 
     CFG* cfg;
-    CfgInstrRef* dangling;
+    CfgNode* dangling;
 };
 
 /*
@@ -373,7 +339,7 @@ struct _exec_state {
   Int call_stack_bottom; /* Index into fn_stack */
 
   CFG* cfg;
-  CfgInstrRef* dangling;
+  CfgNode* dangling;
 };
 
 enum CfgNodeType {
@@ -537,12 +503,12 @@ Bool LPG_(cfgnode_is_indirect)(CfgNode* node);
 Bool LPG_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr);
 Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr, Bool* virtual);
 Bool LPG_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2);
-void LPG_(cfgnode_set_block)(CFG* cfg, CfgInstrRef** last, BB* bb, Int group_offset);
-void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgInstrRef* last, Addr to,
+CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_offset);
+void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 		LpgJumpKind jmpkind, Bool indirect);
-void LPG_(cfgnode_set_call)(CFG* cfg, CfgInstrRef* last, CFG* call, Bool indirect);
-void LPG_(cfgnode_set_exit)(CFG* cfg, CfgInstrRef** last);
-void LPG_(cfgnode_set_halt)(CFG* cfg, CfgInstrRef** last);
+void LPG_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirect);
+CfgNode* LPG_(cfgnode_set_exit)(CFG* cfg, CfgNode* dangling);
+CfgNode* LPG_(cfgnode_set_halt)(CFG* cfg, CfgNode* dangling);
 void LPG_(clean_visited_cfgnodes)(CFG* cfg);
 void LPG_(check_cfg)(CFG* cfg);
 void LPG_(fprint_cfg)(VgFile* out, CFG* cfg);

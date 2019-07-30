@@ -155,17 +155,8 @@ void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 	if (!LPG_(cfg_fdesc)(callee))
 		LPG_(cfg_build_fdesc)(callee);
 
-#ifdef LPG_ENABLE_PATH_CACHE
-	if (!LPG_(current_state).dangling->cache ||
-		LPG_(current_state).dangling->cache->call.cfg != callee ||
-		LPG_(current_state).dangling->cache->call.indirect != from->jmp[jmp].indirect) {
-		LPG_(cfgnode_set_call)(LPG_(current_state).cfg, LPG_(current_state).dangling,
-				callee, from->jmp[jmp].indirect);
-	}
-#else
 	LPG_(cfgnode_set_call)(LPG_(current_state).cfg, LPG_(current_state).dangling,
 			callee, from->jmp[jmp].indirect);
-#endif
 
     /* put jcc on call stack */
     current_entry->sp = sp;
@@ -187,7 +178,7 @@ void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 		LPG_(cfg_set_inside_main)(callee, LPG_(cfg_is_inside_main)(LPG_(current_state).cfg));
 
     LPG_(current_state).cfg = callee;
-    LPG_(current_state).dangling = 0;
+    LPG_(current_state).dangling = LPG_(cfg_entry_node)(callee);
 }
 
 
@@ -212,16 +203,9 @@ void LPG_(pop_call_stack)(Bool halt) {
 		LPG_(current_call_stack).sp);
 
 	if (halt) {
-		LPG_(cfgnode_set_halt)(LPG_(current_state).cfg, &(LPG_(current_state).dangling));
+		LPG_(cfgnode_set_halt)(LPG_(current_state).cfg, LPG_(current_state).dangling);
 	} else {
-#ifdef LPG_ENABLE_PATH_CACHE
-		if (LPG_(current_state).dangling->cache && LPG_(current_state).dangling->cache->exit)
-			LPG_(current_state).dangling = 0;
-		else
-			LPG_(cfgnode_set_exit)(LPG_(current_state).cfg, &(LPG_(current_state).dangling));
-#else
-		LPG_(cfgnode_set_exit)(LPG_(current_state).cfg, &(LPG_(current_state).dangling));
-#endif
+		LPG_(cfgnode_set_exit)(LPG_(current_state).cfg, LPG_(current_state).dangling);
     }
 
 	LPG_(current_state).cfg = lower_entry->cfg;

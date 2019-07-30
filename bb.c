@@ -387,9 +387,6 @@ void LPG_(setup_bb)(BB* bb) {
 	Int passed = 0, p, csp;
 	Bool ret_without_call = False;
 	Int popcount_on_return = 1;
-#ifdef LPG_ENABLE_PATH_CACHE
-	Int idx;
-#endif
 
 	LPG_DEBUG(3, "+ setup_bb(BB %#lx)\n", bb_addr(bb));
 
@@ -426,20 +423,9 @@ void LPG_(setup_bb)(BB* bb) {
 		// The first group was already processed in the end of the previous setup_bbcc.
 		group = 0;
 		for (p = 0; p <= passed; p++) {
-#ifdef LPG_ENABLE_PATH_CACHE
-			idx = last_bb->jmp[p].dst % PATH_CACHE_SIZE;
-			if (!LPG_(current_state).dangling->cache ||
-				LPG_(current_state).dangling->cache->phantom[idx].addr != last_bb->jmp[p].dst ||
-				LPG_(current_state).dangling->cache->phantom[idx].indirect != last_bb->jmp[p].indirect) {
-				LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
-						LPG_(current_state).dangling, last_bb->jmp[p].dst,
-						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
-			}
-#else
 			LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
 					LPG_(current_state).dangling, last_bb->jmp[p].dst,
 					last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
-#endif
 
 			// Only process a new block if it is different from the previous one.
 			if (last_bb->jmp[p].group != group) {
@@ -447,40 +433,17 @@ void LPG_(setup_bb)(BB* bb) {
 				group++;
 				LPG_ASSERT(group == last_bb->jmp[p].group);
 
-#ifdef LPG_ENABLE_PATH_CACHE
-				idx = last_bb->groups[group].group_addr % PATH_CACHE_SIZE;
-				if (LPG_(current_state).dangling->cache &&
-						LPG_(current_state).dangling->cache->block[idx].from == last_bb->groups[group].group_addr &&
-						LPG_(current_state).dangling->cache->block[idx].size == last_bb->groups[group].group_size) {
-					LPG_(current_state).dangling = LPG_(current_state).dangling->cache->block[idx].to;
-				} else {
-					LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
-							&(LPG_(current_state).dangling), last_bb, group);
-				}
-#else
-				LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
-						&(LPG_(current_state).dangling), last_bb, group);
-#endif
+				LPG_(current_state).dangling = LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
+						LPG_(current_state).dangling, last_bb, group);
 			}
 		}
 
 		// If there are still jumps in the same group, this means
 		// that they are phantom nodes.
 		while (p <= last_bb->cjmp_count && last_bb->jmp[p].group == group) {
-#ifdef LPG_ENABLE_PATH_CACHE
-			idx = last_bb->jmp[p].dst % PATH_CACHE_SIZE;
-			if (!LPG_(current_state).dangling->cache ||
-				LPG_(current_state).dangling->cache->phantom[idx].addr != last_bb->jmp[p].dst ||
-				LPG_(current_state).dangling->cache->phantom[idx].indirect != last_bb->jmp[p].indirect) {
-				LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
-						LPG_(current_state).dangling, last_bb->jmp[p].dst,
-						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
-			}
-#else
 			LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
 					LPG_(current_state).dangling, last_bb->jmp[p].dst,
 					last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
-#endif
 
 			p++;
 		}
@@ -493,7 +456,7 @@ void LPG_(setup_bb)(BB* bb) {
 		isConditionalJump = False;
 
 		LPG_(current_state).cfg = LPG_(get_cfg)(bb->groups[0].group_addr);
-		LPG_(current_state).dangling = 0;
+		LPG_(current_state).dangling = LPG_(cfg_entry_node)(LPG_(current_state).cfg);
 	}
 
 	/* Manipulate JmpKind if needed, only using BB specific info */
@@ -620,20 +583,8 @@ void LPG_(setup_bb)(BB* bb) {
 	 * happens in first instructions of the BB */
 	LPG_(current_state).jmps_passed = 0;
 
-#ifdef LPG_ENABLE_PATH_CACHE
-	idx = bb->groups[0].group_addr % PATH_CACHE_SIZE;
-	if (LPG_(current_state).dangling && LPG_(current_state).dangling->cache &&
-			LPG_(current_state).dangling->cache->block[idx].from == bb->groups[0].group_addr &&
-			LPG_(current_state).dangling->cache->block[idx].size == bb->groups[0].group_size) {
-		LPG_(current_state).dangling = LPG_(current_state).dangling->cache->block[idx].to;
-	} else {
-		LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
-				&(LPG_(current_state).dangling), bb, 0);
-	}
-#else
-	LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
-			&(LPG_(current_state).dangling), bb, 0);
-#endif
+	LPG_(current_state).dangling = LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
+			LPG_(current_state).dangling, bb, 0);
 
 	LPG_DEBUG(3,
 			"- setup_bb (BB %#lx): Instrs %u (Len %u)\n",

@@ -637,7 +637,7 @@ void unwind_thread(thread_info* t) {
 		LPG_(pop_call_stack)(True);
 
 	// Set the last dangling instructions to its exit node.
-	LPG_(cfgnode_set_halt)(LPG_(current_state).cfg, &(LPG_(current_state).dangling));
+	LPG_(cfgnode_set_halt)(LPG_(current_state).cfg, LPG_(current_state).dangling);
 
 	/* reset context and function stack for context generation */
 	LPG_(init_exec_state)(&LPG_(current_state));
