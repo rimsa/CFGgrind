@@ -1318,19 +1318,29 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 		CfgInstrRef* next;
 
 		if (curr_ref) {
-			do {
-				LPG_ASSERT(bb_idx < bb->instr_count);
-				addr = base_addr + bb->instr[bb_idx].instr_offset;
-				size = bb->instr[bb_idx].instr_size;
+			// If the instruction is the first in the block and its size
+			// matches the group size, then try to skip it as a whole.
+			if (ref_is_head(curr_ref) &&
+				((accumulated_size + dangling->data.block->size) <= group.group_size)) {
+					accumulated_size += dangling->data.block->size;
+					bb_idx += dangling->data.block->instrs.count;
 
-				LPG_ASSERT(curr_ref->instr->addr == addr);
-				LPG_ASSERT(curr_ref->instr->size == size);
+					curr_ref = 0;
+			} else {
+				do {
+					LPG_ASSERT(bb_idx < bb->instr_count);
+					addr = base_addr + bb->instr[bb_idx].instr_offset;
+					size = bb->instr[bb_idx].instr_size;
 
-				accumulated_size += size;
-				bb_idx++;
+					LPG_ASSERT(curr_ref->instr->addr == addr);
+					LPG_ASSERT(curr_ref->instr->size == size);
 
-				curr_ref = curr_ref->next;
-			} while (curr_ref && accumulated_size < group.group_size);
+					accumulated_size += size;
+					bb_idx++;
+
+					curr_ref = curr_ref->next;
+				} while (curr_ref && accumulated_size < group.group_size);
+			}
 		} else {
 			LPG_ASSERT(bb_idx < bb->instr_count);
 			addr = base_addr + bb->instr[bb_idx].instr_offset;
