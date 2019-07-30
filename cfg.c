@@ -67,7 +67,6 @@ struct _CfgNode {
 
 /* CFG hash, resizable */
 cfg_hash cfgs;
-SmartHash* leaders = 0; // SmartList<UniqueInstr*>
 
 VgFile *fp = 0;
 
@@ -94,12 +93,6 @@ struct {
 
 	HChar text[1024];
 } token;
-
-static __inline__
-Addr leader_addr(UniqueInstr* instr) {
-	LPG_ASSERT(instr != 0);
-	return instr->addr;
-}
 
 static __inline__
 Addr ref_instr_addr(CfgInstrRef* ref) {
@@ -430,9 +423,6 @@ void cfgnode_put_block(CFG* cfg, CfgNode* node, CfgBlock* block) {
 	LPG_ASSERT(ref != 0);
 	LPG_ASSERT(node->data.block->addr == ref->instr->addr);
 
-	// Add the instruction to the leaders list.
-	LPG_(smart_hash_put)(leaders, ref->instr, (HWord (*)(void*)) leader_addr);
-
 	// Fix the node in all instructions refs and add them to the cache.
 	while (ref) {
 		// Update the reference node information.
@@ -464,9 +454,6 @@ void cfgnode_put_phantom(CFG* cfg, CfgNode* node, CfgInstrRef* ref) {
 	node->data.phantom = ref;
 	ref->node = node;
 	ref->next = 0;
-
-	// Add the instruction to the leaders list.
-	LPG_(smart_hash_put)(leaders, ref->instr, (HWord (*)(void*)) leader_addr);
 
 	// Add the reference to the CFG cache and ensure it should not be another ref
 	// with the same adddress.
@@ -685,10 +672,6 @@ void remove_phantom(CFG* cfg, CfgNode* phantom) {
 
 	ref = phantom->data.phantom;
 	LPG_ASSERT(ref != 0);
-
-	// Remove the instruction from the leaders list.
-	LPG_(smart_hash_remove)(leaders, leader_addr(ref->instr),
-			(HWord (*)(void*)) leader_addr);
 
 	// Remove the reference from the CFG's instruction cache.
 	LPG_(smart_hash_remove)(cfg->cache.refs, ref_instr_addr(ref),
@@ -922,8 +905,6 @@ void LPG_(init_cfg_hash)() {
 	size = cfgs.size * sizeof(CFG*);
 	cfgs.table = (CFG**) LPG_MALLOC("cl.cfg.ich.1", size);
 	VG_(memset)(cfgs.table, 0, size);
-
-	leaders = LPG_(new_smart_hash)(4 * cfgs.size + 9);
 }
 
 void LPG_(destroy_cfg_hash)() {
@@ -944,10 +925,6 @@ void LPG_(destroy_cfg_hash)() {
 
 	LPG_FREE(cfgs.table);
 	cfgs.table = 0;
-
-	LPG_(smart_hash_clear)(leaders, 0);
-	LPG_(delete_smart_hash)(leaders);
-	leaders = 0;
 }
 
 CFG* LPG_(get_cfg)(Addr addr) {
@@ -2489,18 +2466,4 @@ void LPG_(clear_visited)(CFG* cfg) {
 	LPG_ASSERT(cfg != 0);
 
 	cfg->visited = False;
-}
-
-Bool LPG_(is_instr_leader)(UniqueInstr* instr) {
-	UniqueInstr* tmp;
-
-	LPG_ASSERT(instr != 0);
-
-	if ((tmp = (UniqueInstr*) LPG_(smart_hash_get)(leaders,
-			instr->addr, (HWord (*)(void*)) leader_addr))) {
-		LPG_ASSERT(LPG_(instrs_cmp)(tmp, instr));
-		return True;
-	}
-
-	return False;
 }

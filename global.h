@@ -552,7 +552,6 @@ void LPG_(read_cfgs)(Int fd);
 void LPG_(dump_cfg)(CFG* cfg);
 void LPG_(forall_cfg)(void (*func)(CFG*), Bool all);
 void LPG_(clear_visited)(CFG* cfg);
-Bool LPG_(is_instr_leader)(UniqueInstr* instr);
 
 /* from clo.c */
 void LPG_(set_clo_defaults)(void);
