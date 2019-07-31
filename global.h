@@ -61,6 +61,9 @@
  * (define to 0 if you get compile errors) */
 #define LPG_MICROSYSTIME 0
 
+// CFG node cache size. Use 0 to disable.
+#define CFG_NODE_CACHE_SIZE 8
+
 // Chain Smart List: 1
 // Realloc Smart List: 2
 #define SMART_LIST_MODE 2
@@ -152,7 +155,10 @@ typedef struct _call_entry			call_entry;
 typedef struct _thread_info			thread_info;
 typedef struct _BitSet				BitSet;
 typedef struct _CFG					CFG;
+typedef struct _CfgInstrRef			CfgInstrRef;
 typedef struct _CfgNode				CfgNode;
+typedef struct _CfgNodeCache			CfgNodeCache;
+typedef struct _CfgBlock				CfgBlock;
 typedef struct _FunctionDesc			FunctionDesc;
 typedef struct _SmartHash			SmartHash;
 typedef struct _SmartSeek			SmartSeek;
@@ -348,6 +354,81 @@ enum CfgNodeType {
 	CFG_PHANTOM,
 	CFG_EXIT,
 	CFG_HALT
+};
+
+struct _CFG {
+	Addr addr;				// CFG address
+	FunctionDesc* fdesc;		// debugging info for this CFG
+
+	Bool inside_main;		// mark the CFG as a successor of the main func
+	Bool dirty;				// true if new nodes are added during analysis
+	Bool visited;			// used to use in search algorithms
+
+	CfgNode* entry;			// cfg entry node
+	CfgNode* exit;			// cfg exit node (if exists).
+	CfgNode* halt;			// cfg halt node (if exists).
+	SmartList* nodes;		// SmartList<CfgNode*>
+
+	struct {
+		SmartHash* refs;		// SmartHash<CfgInstrRef*>, index by instruction address
+	} cache;
+
+	struct {
+		Int blocks;
+		Int phantoms;
+		Int indirects;
+	} stats;
+
+	CFG* chain;				// entry chain in hash
+};
+
+#if CFG_NODE_CACHE_SIZE > 0
+#define CFG_NODE_CACHE_INDEX(addr) (addr % CFG_NODE_CACHE_SIZE)
+struct _CfgNodeCache {
+	struct {
+		Addr addr;
+
+		struct {
+			Addr size;
+			CfgNode* dangling;
+		} block;
+
+		struct {
+			Bool indirect;
+		} phantom;
+
+		struct {
+			Bool indirect;
+		} call;
+	} data[CFG_NODE_CACHE_SIZE];
+
+	Bool exit;
+};
+#endif
+struct _CfgNode {
+	Int id;
+	enum CfgNodeType type;
+
+	union {
+		CfgInstrRef* phantom;	/* Phantom instruction */
+		CfgBlock* block;			/* Block node's block */
+	} data;
+
+	struct {
+		struct {
+			SmartList* nodes;	/* SmartList<CfgNode*> */
+			BitSet* flags;		/* For each node, if it is virtual (set bit) or not (clear bit) */
+		} successors, predecessors;
+
+		SmartList* dominators;
+		CfgNode* idom; 			// imediate dominator
+	} info;
+
+#if CFG_NODE_CACHE_SIZE > 0
+	CfgNodeCache* cache;
+#endif
+
+	Bool visited;				// mark of visited node
 };
 
 typedef struct _SmartValue SmartValue;

@@ -1,32 +1,5 @@
 #include "global.h"
 
-struct _CFG {
-	Addr addr;				// CFG address
-	FunctionDesc* fdesc;		// debugging info for this CFG
-
-	Bool inside_main;		// mark the CFG as a successor of the main func
-	Bool dirty;				// true if new nodes are added during analysis
-	Bool visited;			// used to use in search algorithms
-
-	CfgNode* entry;			// cfg entry node
-	CfgNode* exit;			// cfg exit node (if exists).
-	CfgNode* halt;			// cfg halt node (if exists).
-	SmartList* nodes;		// SmartList<CfgNode*>
-
-	struct {
-		SmartHash* refs;		// SmartHash<CfgInstrRef*>, index by instruction address
-	} cache;
-
-	struct {
-		Int blocks;
-		Int phantoms;
-		Int indirects;
-	} stats;
-
-	CFG* chain;				// entry chain in hash
-};
-
-typedef struct _CfgInstrRef	CfgInstrRef;
 struct _CfgInstrRef {
 	UniqueInstr* instr;	// The instruction itself.
 	CfgNode* node;		// Reference to the CFG node.
@@ -34,7 +7,6 @@ struct _CfgInstrRef {
 	CfgInstrRef* next;	// Next instruction in block. Nil if last.
 };
 
-typedef struct _CfgBlock CfgBlock;
 struct _CfgBlock {
 	Addr addr;
 	Int size;
@@ -49,28 +21,6 @@ struct _CfgBlock {
 	SmartList* calls;	// SmartList<CFG*>
 
 	Bool indirect;				/* has an indirect call or jump */
-};
-
-struct _CfgNode {
-	Int id;
-	enum CfgNodeType type;
-
-	union {
-		CfgInstrRef* phantom;	/* Phantom instruction */
-		CfgBlock* block;			/* Block node's block */
-	} data;
-
-	struct {
-		struct {
-			SmartList* nodes;	/* SmartList<CfgNode*> */
-			BitSet* flags;		/* For each node, if it is virtual (set bit) or not (clear bit) */
-		} successors, predecessors;
-
-		SmartList* dominators;
-		CfgNode* idom; 			// imediate dominator
-	} info;
-
-	Bool visited;				// mark of visited node
 };
 
 /* CFG hash, resizable */
@@ -569,6 +519,20 @@ CfgNode* cfgnode_halt(CFG* cfg) {
 	return cfg->halt;
 }
 
+#if CFG_NODE_CACHE_SIZE > 0
+static __inline__
+CfgNodeCache* cfgnode_cache(CfgNode* node) {
+	LPG_ASSERT(node != 0);
+
+	if (!node->cache) {
+		node->cache = (CfgNodeCache*) LPG_MALLOC("lg.cfg.cc.1", sizeof(CfgNodeCache));
+		VG_(memset)(node->cache, 0, sizeof(CfgNodeCache));
+	}
+
+	return node->cache;
+}
+#endif
+
 static
 void delete_cfgnode(CfgNode* node) {
 	LPG_ASSERT(node != 0);
@@ -604,6 +568,11 @@ void delete_cfgnode(CfgNode* node) {
 		LPG_(smart_list_clear)(node->info.dominators, 0);
 		LPG_(delete_smart_list)(node->info.dominators);
 	}
+
+#if CFG_NODE_CACHE_SIZE > 0
+	if (node->cache)
+		LPG_DATA_FREE(node->cache, sizeof(CfgNodeCache));
+#endif
 
 	LPG_DATA_FREE(node, sizeof(CfgNode));
 }
@@ -1296,6 +1265,10 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	InstrGroupInfo group;
 	Int accumulated_size;
 	CfgInstrRef* curr_ref;
+#if CFG_NODE_CACHE_SIZE > 0
+	Int idx;
+	CfgNodeCache* cache;
+#endif
 
 	LPG_ASSERT(cfg != 0);
 	LPG_ASSERT(dangling != 0);
@@ -1305,6 +1278,13 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	// Get the group.
 	LPG_ASSERT(group_offset >= 0 && group_offset < bb->groups_count);
 	group = bb->groups[group_offset];
+
+#if CFG_NODE_CACHE_SIZE > 0
+	cache = cfgnode_cache(dangling);
+	idx = CFG_NODE_CACHE_INDEX(group.group_addr);
+	cache->data[idx].addr = group.group_addr;
+	cache->data[idx].block.size = group.group_size;
+#endif
 
 	// Find the first instruction index.
 	bb_idx = group.bb_info.first_instr;
@@ -1386,16 +1366,31 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	if (curr_ref && !ref_is_tail(curr_ref))
 		dangling = cfgnode_split(cfg, curr_ref->next);
 
+#if CFG_NODE_CACHE_SIZE > 0
+	cache->data[idx].block.dangling = dangling;
+#endif
+
 	return dangling;
 }
 
 void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 			LpgJumpKind jmpkind, Bool indirect) {
 	CfgInstrRef* next;
+#if CFG_NODE_CACHE_SIZE > 0
+	Int idx;
+	CfgNodeCache* cache;
+#endif
 
 	LPG_ASSERT(cfg != 0);
 	LPG_ASSERT(dangling != 0);
 	LPG_ASSERT(dangling->type == CFG_BLOCK);
+
+#if CFG_NODE_CACHE_SIZE > 0
+	cache = cfgnode_cache(dangling);
+	idx = CFG_NODE_CACHE_INDEX(to);
+	cache->data[idx].addr = to;
+	cache->data[idx].phantom.indirect = indirect;
+#endif
 
 	switch (jmpkind) {
 		case jk_None:
@@ -1453,10 +1448,22 @@ void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 }
 
 void LPG_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirect) {
+#if CFG_NODE_CACHE_SIZE > 0
+	Int idx;
+	CfgNodeCache* cache;
+#endif
+
 	LPG_ASSERT(cfg != 0);
 	LPG_ASSERT(dangling != 0);
 	LPG_ASSERT(dangling->type == CFG_BLOCK);
 	LPG_ASSERT(call != 0);
+
+#if CFG_NODE_CACHE_SIZE > 0
+	cache = cfgnode_cache(dangling);
+	idx = CFG_NODE_CACHE_INDEX(call->addr);
+	cache->data[idx].addr = call->addr;
+	cache->data[idx].call.indirect = indirect;
+#endif
 
 	if (indirect)
 		mark_indirect(cfg, dangling);
@@ -1470,9 +1477,18 @@ void LPG_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirec
 }
 
 CfgNode* LPG_(cfgnode_set_exit)(CFG* cfg, CfgNode* dangling) {
+#if CFG_NODE_CACHE_SIZE > 0
+	CfgNodeCache* cache;
+#endif
+
 	LPG_ASSERT(cfg != 0);
 	LPG_ASSERT(dangling != 0);
 	LPG_ASSERT(dangling->type == CFG_BLOCK);
+
+#if CFG_NODE_CACHE_SIZE > 0
+	cache = cfgnode_cache(dangling);
+	cache->exit = True;
+#endif
 
 	// Add the node if it is does not exist yet.
 	add_edge2nodes(cfg, dangling, cfgnode_exit(cfg), False);
