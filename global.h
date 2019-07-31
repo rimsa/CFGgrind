@@ -419,9 +419,6 @@ struct _CfgNode {
 			SmartList* nodes;	/* SmartList<CfgNode*> */
 			BitSet* flags;		/* For each node, if it is virtual (set bit) or not (clear bit) */
 		} successors, predecessors;
-
-		SmartList* dominators;
-		CfgNode* idom; 			// imediate dominator
 	} info;
 
 #if CFG_NODE_CACHE_SIZE > 0
@@ -574,10 +571,6 @@ Addr LPG_(cfgnode_addr)(CfgNode* node);
 Addr LPG_(cfgnode_size)(CfgNode* node);
 SmartList* LPG_(cfgnode_successors)(CfgNode* node);
 SmartList* LPG_(cfgnode_predecessors)(CfgNode* node);
-SmartList* LPG_(cfgnode_dominators)(CfgNode* node);
-void LPG_(cfgnode_set_dominators)(CfgNode* node, SmartList* dominators);
-CfgNode* LPG_(cfgnode_immediate_dominator)(CfgNode* node);
-void LPG_(cfgnode_set_immediate_dominator)(CfgNode* node, CfgNode* idom);
 Bool LPG_(cfgnode_is_visited)(CfgNode* node);
 void LPG_(cfgnode_set_visited)(CfgNode* node, Bool visited);
 Bool LPG_(cfgnode_is_indirect)(CfgNode* node);

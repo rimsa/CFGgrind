@@ -564,11 +564,6 @@ void delete_cfgnode(CfgNode* node) {
 		LPG_(delete_bitset)(node->info.predecessors.flags);
 	}
 
-	if (node->info.dominators) {
-		LPG_(smart_list_clear)(node->info.dominators, 0);
-		LPG_(delete_smart_list)(node->info.dominators);
-	}
-
 #if CFG_NODE_CACHE_SIZE > 0
 	if (node->cache)
 		LPG_DATA_FREE(node->cache, sizeof(CfgNodeCache));
@@ -1096,30 +1091,6 @@ SmartList* LPG_(cfgnode_successors)(CfgNode* node) {
 SmartList* LPG_(cfgnode_predecessors)(CfgNode* node) {
 	LPG_ASSERT(node != 0);
 	return node->info.predecessors.nodes;
-}
-
-SmartList* LPG_(cfgnode_dominators)(CfgNode* node) {
-	LPG_ASSERT(node != 0);
-	return node->info.dominators;
-}
-
-void LPG_(cfgnode_set_dominators)(CfgNode* node, SmartList* dominators) {
-	LPG_ASSERT(node != 0);
-
-	if (node->info.dominators)
-		LPG_(delete_smart_list)(node->info.dominators);
-
-	node->info.dominators = dominators;
-}
-
-CfgNode* LPG_(cfgnode_immediate_dominator)(CfgNode* node) {
-	LPG_ASSERT(node != 0);
-	return node->info.idom;
-}
-
-void LPG_(cfgnode_set_immediate_dominator)(CfgNode* node, CfgNode* idom) {
-	LPG_ASSERT(node != 0);
-	node->info.idom = idom;
 }
 
 Bool LPG_(cfgnode_is_visited)(CfgNode* node) {
@@ -1749,18 +1720,6 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 					LPG_FREE(desc);
 
 					VG_(fprintf)(out, ")\\l\n");
-				}
-			}
-
-			if (detailed) {
-				if (node->info.idom) {
-					VG_(fprintf)(out, "     | [idom]\\l\n");
-					VG_(fprintf)(out, "     &nbsp;&nbsp;");
-					if (node->info.idom->type == CFG_ENTRY)
-						VG_(fprintf)(out, "%s", LPG_(cfgnode_type2str)(node->info.idom->type, False));
-					else
-						VG_(fprintf)(out, "0x%lx", LPG_(cfgnode_addr)(node->info.idom));
-					VG_(fprintf)(out, "\\l\n");
 				}
 			}
 
