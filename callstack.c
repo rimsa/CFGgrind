@@ -135,8 +135,6 @@ void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 #endif
 
     /* Ensure a call stack of size <current_sp>+1.
-     * The +1 is needed as push_cxt will store the
-     * context at [current_sp]
      */
     ensure_stack_size(LPG_(current_call_stack).sp +1);
     current_entry = &(LPG_(current_call_stack).entry[LPG_(current_call_stack).sp]);

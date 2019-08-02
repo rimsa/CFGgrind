@@ -99,29 +99,17 @@ struct _CommandLineOptions {
 };
 
 /*------------------------------------------------------------*/
-/*--- Constants                                            ---*/
-/*------------------------------------------------------------*/
-
-/* Minimum cache line size allowed */
-#define MIN_LINE_SIZE   16
-
-#define MAX_DSIZE    512
-
-/*------------------------------------------------------------*/
 /*--- Statistics                                           ---*/
 /*------------------------------------------------------------*/
 
 typedef struct _Statistics Statistics;
 struct _Statistics {
   ULong bb_executions;
-
-  Int  context_counter;
   Int  bb_retranslations;  
 
   Int  distinct_objs;
   Int  distinct_files;
   Int  distinct_fns;
-  Int  distinct_contexts;
   Int  distinct_bbs;
   Int  distinct_instrs;
   Int  distinct_groups;
@@ -130,7 +118,6 @@ struct _Statistics {
 
   Int  bb_hash_resizes;
   Int  call_stack_resizes;
-  Int  fn_stack_resizes;
   Int  cfg_hash_resizes;
 
   Int  full_debug_BBs;
@@ -144,13 +131,10 @@ struct _Statistics {
 /*--- Structure declarations                               ---*/
 /*------------------------------------------------------------*/
 
-typedef struct _Context				Context;
-typedef struct _CC					CC;
 typedef struct _BB					BB;
 typedef struct _fn_node				fn_node;
 typedef struct _file_node			file_node;
 typedef struct _obj_node				obj_node;
-typedef struct _fn_config			fn_config;
 typedef struct _call_entry			call_entry;
 typedef struct _thread_info			thread_info;
 typedef struct _CFG					CFG;
@@ -444,12 +428,6 @@ struct _call_stack {
   UInt size;
   Int sp;
   call_entry* entry;
-};
-
-typedef struct _fn_stack fn_stack;
-struct _fn_stack {
-  UInt size;
-  fn_node **bottom, **top;
 };
 
 typedef struct _cfg_hash cfg_hash;

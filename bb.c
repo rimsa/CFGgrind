@@ -373,8 +373,7 @@ void LPG_(delete_bb)(Addr addr)
 }
 
 /*
- * Helper function called at start of each instrumented BB to setup
- * pointer to costs for current thread/context/recursion level
+ * Helper function called at start of each instrumented BB.
  */
 VG_REGPARM(1)
 void LPG_(setup_bb)(BB* bb) {
@@ -578,8 +577,7 @@ void LPG_(setup_bb)(BB* bb) {
 				last_bb ? bb_jmpaddr(last_bb) : 0, bb_addr(bb), sp);
 	}
 
-	/* Handle CALL/RET and update context to get correct BBCC */
-
+	/* Handle CALL/RET */
 	if (jmpkind == jk_Return) {
 		LPG_ASSERT(csp != 0);
 		LPG_ASSERT(popcount_on_return > 0);

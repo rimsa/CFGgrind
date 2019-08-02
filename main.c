@@ -55,13 +55,11 @@ exec_state LPG_(current_state);
 static void LPG_(init_statistics)(Statistics* s) {
 	s->bb_executions = 0;
 
-	s->context_counter = 0;
 	s->bb_retranslations = 0;
 
 	s->distinct_objs = 0;
 	s->distinct_files = 0;
 	s->distinct_fns = 0;
-	s->distinct_contexts = 0;
 	s->distinct_bbs = 0;
 	s->distinct_instrs = 0;
 	s->distinct_groups = 0;
@@ -70,7 +68,6 @@ static void LPG_(init_statistics)(Statistics* s) {
 
 	s->bb_hash_resizes = 0;
 	s->call_stack_resizes = 0;
-	s->fn_stack_resizes = 0;
 	s->cfg_hash_resizes = 0;
 
 	s->full_debug_BBs = 0;
