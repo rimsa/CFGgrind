@@ -23,7 +23,6 @@ endif
 
 CFGGRIND_SOURCES_COMMON = \
 	bb.c \
-	bitset.c \
 	callstack.c \
 	cfg.c \
 	clo.c \

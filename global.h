@@ -153,7 +153,6 @@ typedef struct _obj_node				obj_node;
 typedef struct _fn_config			fn_config;
 typedef struct _call_entry			call_entry;
 typedef struct _thread_info			thread_info;
-typedef struct _BitSet				BitSet;
 typedef struct _CFG					CFG;
 typedef struct _CfgInstrRef			CfgInstrRef;
 typedef struct _CfgNode				CfgNode;
@@ -499,50 +498,6 @@ static __inline__ Addr bb_addr(BB* bb)
 static __inline__ Addr bb_jmpaddr(BB* bb)
  { UInt off = (bb->instr_count > 0) ? bb->instr[bb->instr_count-1].instr_offset : 0;
    return off + bb->offset + bb->obj->offset; }
-
-/* from bitset.c */
-BitSet* LPG_(new_bitset)(Int size);
-BitSet* LPG_(new_fixed_bitset)(Int size);
-void LPG_(delete_bitset)(BitSet* bs);
-void LPG_(bitset_grow)(BitSet* bs, Int new_size);
-void LPG_(bitset_copy)(BitSet* dst, BitSet* src);
-BitSet* LPG_(bitset_clone)(BitSet* bs);
-Int LPG_(bitset_size)(BitSet* bs);
-Int LPG_(bitset_cardinality)(BitSet* bs);
-Bool LPG_(bitset_cmp)(BitSet* bs1, BitSet* bs2);
-Bool LPG_(bitset_is_empty)(BitSet* bs);
-Bool LPG_(bitset_is_empty_pos)(BitSet* bs, Int pos);
-Bool LPG_(bitset_is_empty_range)(BitSet* bs, Int from, Int to);
-void LPG_(bitset_clear)(BitSet* bs);
-void LPG_(bitset_clear_pos)(BitSet* bs, Int pos);
-void LPG_(bitset_clear_range)(BitSet* bs, Int from, Int to);
-Bool LPG_(bitset_get_pos)(BitSet* bs, Int pos);
-BitSet* LPG_(bitset_get_range)(BitSet* bs, Int from, Int to);
-void LPG_(bitset_set_pos)(BitSet* bs, Int pos);
-void LPG_(bitset_set_pos_value)(BitSet* bs, Int pos, Bool value);
-void LPG_(bitset_set_range)(BitSet* bs, Int from, Int to);
-void LPG_(bitset_set_range_value)(BitSet* bs, Int from, Int to, Bool value);
-void LPG_(bitset_flip)(BitSet* bs);
-void LPG_(bitset_flip_pos)(BitSet* bs, Int pos);
-void LPG_(bitset_flip_range)(BitSet* bs, Int from, Int to);
-void LPG_(bitset_not)(BitSet* bs);
-void LPG_(bitset_and)(BitSet* dst, BitSet* src);
-void LPG_(bitset_or)(BitSet* dst, BitSet* src);
-void LPG_(bitset_xor)(BitSet* dst, BitSet* src);
-void LPG_(bitset_and_not)(BitSet* dst, BitSet* src);
-void LPG_(bitset_forall_set)(BitSet* bs, Bool (*func)(Int, void*), void* arg);
-void LPG_(bitset_print)(BitSet* bs);
-SmartSeek* LPG_(bitset_seek)(BitSet* bs);
-void LPG_(bitset_delete_seek)(SmartSeek* ss);
-void LPG_(bitset_rewind)(SmartSeek* ss);
-Int LPG_(bitset_get_index)(SmartSeek* ss);
-void LPG_(bitset_set_index)(SmartSeek* ss, Int index);
-void LPG_(bitset_clear_value)(SmartSeek* ss);
-Bool LPG_(bitset_get)(SmartSeek* ss);
-void LPG_(bitset_set)(SmartSeek* ss);
-void LPG_(bitset_set_value)(SmartSeek* ss, Bool value);
-Bool LPG_(bitset_has_next)(SmartSeek* ss);
-void LPG_(bitset_next)(SmartSeek* ss);
 
 /* from cfg.c */
 void LPG_(init_cfg_hash)(void);
