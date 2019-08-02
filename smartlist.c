@@ -43,7 +43,7 @@ void grow_smart_list(SmartList* slist) {
 	if (slist->fixed)
 		tl_assert("Not allowed to enlarge this smart list.");
 
-	LPG_DEBUG(3, "[smartlist] Growing smart list from: %u to ", slist->size);
+	LPG_DEBUG(3, "[smartlist] Growing smart list from: %d to ", slist->size);
 
 #ifdef USING_CHAIN_SMART_LIST
 	{
@@ -82,7 +82,7 @@ void grow_smart_list(SmartList* slist) {
 	{
 		Int new_size = (Int) (slist->size * slist->growth_rate);
 		LPG_ASSERT(new_size > slist->size);
-		LPG_DEBUG(3, "%u\n", new_size);
+		LPG_DEBUG(3, "%d\n", new_size);
 
 		slist->data->list = LPG_REALLOC("lg.smartlist.gsl.1",
 				slist->data->list, (new_size * sizeof(void*)));

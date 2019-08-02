@@ -1676,7 +1676,7 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 					LPG_(cfgnode_type2str)(CFG_HALT, False));
 		} else if (node->type == CFG_BLOCK) {
 			VG_(fprintf)(out, "  \"0x%lx\" [label=\"{\n", LPG_(cfgnode_addr)(node));
-			VG_(fprintf)(out, "     0x%lx [%u]\\l\n",
+			VG_(fprintf)(out, "     0x%lx [%d]\\l\n",
 					node->data.block->addr, node->data.block->size);
 
 			if (detailed) {
@@ -1688,7 +1688,7 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 				LPG_ASSERT(ref != 0);
 
 				while (ref) {
-					VG_(fprintf)(out, "     &nbsp;&nbsp;0x%lx \\<+%u\\>: ",
+					VG_(fprintf)(out, "     &nbsp;&nbsp;0x%lx \\<+%d\\>: ",
 							ref->instr->addr, ref->instr->size);
 
 					if (ref->instr->name)

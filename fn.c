@@ -595,14 +595,6 @@ fn_node* LPG_(get_fn_node)(BB* bb)
     /* if this is the 1st time the function is seen,
      * some attributes are set */
     if (!fn->visited) {
-
-      /* Every function gets a "pure" context, i.e. a context with stack
-       * depth 1 only with this function. This is for compression of mangled
-       * names
-       */
-      fn_node* pure[2];
-      pure[0] = 0;
-      pure[1] = fn;
       fn->visited = True;
 
       fn->is_malloc  = (VG_(strcmp)(fn->name, "malloc")==0);

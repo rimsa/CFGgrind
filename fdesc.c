@@ -68,7 +68,7 @@ void LPG_(print_fdesc)(FunctionDesc* fdesc) {
 	if (!fdesc)
 		VG_(printf)("unknown");
 	else
-		VG_(printf)("%s::%s(%d)",
+		VG_(printf)("%s::%s(%u)",
 				(fdesc->obj_name ? fdesc->obj_name : unknown_name),
 				(fdesc->fn_name ? fdesc->fn_name : unknown_name),
 				fdesc->fn_line);
@@ -80,7 +80,7 @@ void LPG_(fprint_fdesc)(VgFile* fp, FunctionDesc* fdesc) {
 	if (!fdesc)
 		VG_(fprintf)(fp, "unknown");
 	else
-		VG_(fprintf)(fp, "%s::%s(%d)",
+		VG_(fprintf)(fp, "%s::%s(%u)",
 				(fdesc->obj_name ? fdesc->obj_name : unknown_name),
 				(fdesc->fn_name ? fdesc->fn_name : unknown_name),
 				fdesc->fn_line);
