@@ -600,8 +600,13 @@ void LPG_(setup_bb)(BB* bb) {
 		}
 	}
 
-	if (delayed_push)
+	if (delayed_push) {
+		if (call_emulation)
+			LPG_(cfgnode_remove_successor_with_addr)(LPG_(current_state).cfg,
+					LPG_(current_state).dangling, bb->groups[0].group_addr);
+
 		LPG_(push_call_stack)(last_bb, passed, bb, sp);
+	}
 
 	LPG_(current_state).bb = bb;
 	/* Even though this will be set in instrumented code directly before

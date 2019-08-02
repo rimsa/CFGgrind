@@ -636,64 +636,9 @@ void remove_phantom(CFG* cfg, CfgNode* phantom) {
 }
 
 static
-void call_sanity_check(CFG* cfg, CfgNode* node, Addr addr) {
-	Int i, size;
-
-	if (!node->info.successors.nodes)
-		return;
-
-	size = LPG_(smart_list_count)(node->info.successors.nodes);
-	for (i = 0; i < size; i++) {
-		CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, i);
-		LPG_ASSERT(succ != 0);
-
-		// Ignore exit nodes.
-		// Entry nodes should never be sucessor.
-		if (succ->type == CFG_EXIT || succ->type == CFG_HALT)
-			continue;
-
-		// Check if we have a successor with this address.
-		// If that is the case, remove it if possible.
-		if (LPG_(cfgnode_addr)(succ) == addr) {
-			switch (succ->type) {
-				case CFG_BLOCK:
-					// We can only remove it if the flag is virtual.
-					LPG_ASSERT(LPG_(bitset_get_pos)(node->info.successors.flags, i));
-					break;
-				case CFG_PHANTOM:
-					// This means that the node must be a phantom.
-					// Ensure that it has only one predecessor (safe to remove).
-					LPG_ASSERT(succ->info.predecessors.nodes != 0);
-					LPG_ASSERT(LPG_(smart_list_count)(succ->info.predecessors.nodes) == 1);
-
-					// Remove the phantom node.
-					remove_phantom(cfg, succ);
-
-					break;
-				default:
-					tl_assert(0);
-			}
-
-			// Update the sucessors list without it.
-			CfgNode* last = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, size-1);
-			LPG_(smart_list_set)(node->info.successors.nodes, i, last);
-			LPG_(smart_list_set)(node->info.successors.nodes, size-1, 0);
-
-			// Update the virtual flag as well.
-			LPG_ASSERT(node->info.successors.flags != 0);
-			LPG_(bitset_set_pos_value)(node->info.successors.flags, i,
-					LPG_(bitset_get_pos)(node->info.successors.flags, size-1));
-			LPG_(bitset_clear_pos)(node->info.successors.flags, size-1);
-
-			return;
-		}
-	}
-}
-
-static
 Bool cfgnode_add_call(CFG* cfg, CfgNode* node, CFG* call) {
 	if (!has_node_call(node, call)) {
-		call_sanity_check(cfg, node, call->addr);
+		LPG_ASSERT(!LPG_(cfgnode_has_successor_with_addr)(node, call->addr, 0));
 
 		if (!node->data.block->calls)
 			node->data.block->calls = LPG_(new_smart_list)(1);
@@ -1155,6 +1100,91 @@ Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr, Bool* is_vi
 
 	return False;
 }
+
+void LPG_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr) {
+	Int i, size;
+
+	if (!node->info.successors.nodes)
+		return;
+
+	size = LPG_(smart_list_count)(node->info.successors.nodes);
+	for (i = 0; i < size; i++) {
+		CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, i);
+		LPG_ASSERT(succ != 0);
+
+		// Ignore exit nodes.
+		// Entry nodes should never be sucessor.
+		if (succ->type == CFG_EXIT || succ->type == CFG_HALT)
+			continue;
+
+		// Check if we have a successor with this address.
+		// If that is the case, remove it if possible.
+		if (LPG_(cfgnode_addr)(succ) == addr) {
+			Int j, size2;
+			CfgNode* last;
+
+			switch (succ->type) {
+				case CFG_BLOCK:
+					LPG_ASSERT(succ->info.predecessors.nodes != 0);
+
+					// Ensure that it has more than one predecessor, the node
+					// will not be orphan.
+					size2 = LPG_(smart_list_count)(succ->info.predecessors.nodes);
+					LPG_ASSERT(size2 > 1);
+
+					for (j = 0; j < size2; j++) {
+						CfgNode* pred = (CfgNode*) LPG_(smart_list_at)(succ->info.predecessors.nodes, j);
+						LPG_ASSERT(pred != 0);
+
+						if (pred == node)
+							break;
+					}
+
+					// Did we find it?
+					LPG_ASSERT(j < size2);
+
+					// Remove predecessor.
+					last = LPG_(smart_list_at)(succ->info.predecessors.nodes, (size2 - 1));
+					LPG_(smart_list_set)(succ->info.predecessors.nodes, j, last);
+					LPG_(smart_list_set)(succ->info.predecessors.nodes, (size2 - 1), 0);
+
+					// Update the predecessor virtual flag as well.
+					LPG_ASSERT(succ->info.predecessors.flags != 0);
+					LPG_(bitset_set_pos_value)(succ->info.predecessors.flags, i,
+							LPG_(bitset_get_pos)(succ->info.predecessors.flags, (size - 1)));
+					LPG_(bitset_clear_pos)(succ->info.predecessors.flags, (size - 1));
+
+					break;
+				case CFG_PHANTOM:
+					// This means that the node must be a phantom.
+					// Ensure that it has only one predecessor (safe to remove).
+					LPG_ASSERT(succ->info.predecessors.nodes != 0);
+					LPG_ASSERT(LPG_(smart_list_count)(succ->info.predecessors.nodes) == 1);
+
+					// Remove the phantom node.
+					remove_phantom(cfg, succ);
+
+					break;
+				default:
+					tl_assert(0);
+			}
+
+			// Update the sucessors list without it.
+			last = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, size-1);
+			LPG_(smart_list_set)(node->info.successors.nodes, i, last);
+			LPG_(smart_list_set)(node->info.successors.nodes, (size - 1), 0);
+
+			// Update the virtual flag as well.
+			LPG_ASSERT(node->info.successors.flags != 0);
+			LPG_(bitset_set_pos_value)(node->info.successors.flags, i,
+					LPG_(bitset_get_pos)(node->info.successors.flags, size-1));
+			LPG_(bitset_clear_pos)(node->info.successors.flags, size-1);
+
+			return;
+		}
+	}
+}
+
 
 Bool LPG_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2) {
 	return (node1 && node2 && node1->id == node2->id);

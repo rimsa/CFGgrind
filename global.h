@@ -576,6 +576,7 @@ void LPG_(cfgnode_set_visited)(CfgNode* node, Bool visited);
 Bool LPG_(cfgnode_is_indirect)(CfgNode* node);
 Bool LPG_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr);
 Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr, Bool* virtual);
+void LPG_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr);
 Bool LPG_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2);
 CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_offset);
 void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
