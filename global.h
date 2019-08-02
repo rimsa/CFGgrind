@@ -415,10 +415,8 @@ struct _CfgNode {
 	} data;
 
 	struct {
-		struct {
-			SmartList* nodes;	/* SmartList<CfgNode*> */
-			BitSet* flags;		/* For each node, if it is virtual (set bit) or not (clear bit) */
-		} successors, predecessors;
+		SmartList* successors;   /* SmartList<CfgNode*> */
+		SmartList* predecessors; /* SmartList<CfgNode*> */
 	} info;
 
 #if CFG_NODE_CACHE_SIZE > 0
@@ -575,7 +573,7 @@ Bool LPG_(cfgnode_is_visited)(CfgNode* node);
 void LPG_(cfgnode_set_visited)(CfgNode* node, Bool visited);
 Bool LPG_(cfgnode_is_indirect)(CfgNode* node);
 Bool LPG_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr);
-Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr, Bool* virtual);
+Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr);
 void LPG_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr);
 Bool LPG_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2);
 CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_offset);

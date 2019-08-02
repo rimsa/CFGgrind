@@ -40,7 +40,6 @@ struct {
 		TKN_NUMBER,
 		TKN_BOOL,
 		TKN_TEXT,
-		TKN_PRIME
 	} type;
 
 	union {
@@ -185,26 +184,20 @@ Bool add_node2cfg(CFG* cfg, CfgNode* node) {
 }
 
 static
-Bool has_nodes_edge(CfgNode* from, CfgNode* to, Bool* is_virtual) {
+Bool has_nodes_edge(CfgNode* from, CfgNode* to) {
 	Int i, count;
 
 	LPG_ASSERT(from != 0 && (from->type != CFG_EXIT && from->type != CFG_HALT));
 	LPG_ASSERT(to != 0 && to->type != CFG_ENTRY);
 
-	LPG_ASSERT(from->info.successors.nodes != 0);
-	count = LPG_(smart_list_count)(from->info.successors.nodes);
+	LPG_ASSERT(from->info.successors != 0);
+	count = LPG_(smart_list_count)(from->info.successors);
 	for (i = 0; i < count; i++) {
-		CfgNode* tmp = (CfgNode*) LPG_(smart_list_at)(from->info.successors.nodes, i);
+		CfgNode* tmp = (CfgNode*) LPG_(smart_list_at)(from->info.successors, i);
 		LPG_ASSERT(tmp != 0);
 
-		if (LPG_(cfgnodes_cmp)(to, tmp)) {
-			if (is_virtual) {
-				LPG_ASSERT(from->info.successors.flags != 0);
-				*is_virtual = LPG_(bitset_get_pos)(from->info.successors.flags, i);
-			}
-
+		if (LPG_(cfgnodes_cmp)(to, tmp))
 			return True;
-		}
 	}
 
 	// Not found.
@@ -212,60 +205,18 @@ Bool has_nodes_edge(CfgNode* from, CfgNode* to, Bool* is_virtual) {
 }
 
 static
-Bool add_edge2nodes(CFG* cfg, CfgNode* from, CfgNode* to, Bool virtual) {
-	Int i, size;
-	Bool has, old_virtual;
-
-	has = has_nodes_edge(from, to, &old_virtual);
-	if (has && old_virtual == virtual)
+Bool add_edge2nodes(CFG* cfg, CfgNode* from, CfgNode* to) {
+	if (has_nodes_edge(from, to))
 		return False;
 
-	if (!has) {
-		// Add the successor.
-		LPG_ASSERT(from->info.successors.nodes != 0);
-		LPG_(smart_list_add)(from->info.successors.nodes, to);
+	// Add the successor.
+	LPG_ASSERT(from->info.successors != 0);
+	LPG_(smart_list_add)(from->info.successors, to);
 
-		// Add the predecessor.
-		LPG_ASSERT(to->info.predecessors.nodes != 0);
-		LPG_(smart_list_add)(to->info.predecessors.nodes, from);
+	// Add the predecessor.
+	LPG_ASSERT(to->info.predecessors != 0);
+	LPG_(smart_list_add)(to->info.predecessors, from);
 
-		// If it is not virtual, we don't need to update the flags.
-		if (!virtual)
-			goto out;
-	} else {
-		// If the edge already exists (it may be virtual or not),
-		// then it does not matter if we are requesting a virtual edge.
-		if (virtual)
-			goto out;
-	}
-
-	LPG_ASSERT(from->info.successors.flags != 0);
-	size = LPG_(smart_list_count)(from->info.successors.nodes);
-	for (i = 0; i < size; i++) {
-		CfgNode* tmp = (CfgNode*) LPG_(smart_list_at)(from->info.successors.nodes, i);
-		LPG_ASSERT(tmp != 0);
-
-		if (LPG_(cfgnodes_cmp)(tmp, to)) {
-			LPG_(bitset_set_pos_value)(from->info.successors.flags, i, virtual);
-			break;
-		}
-	}
-	LPG_ASSERT(i < size);
-
-	LPG_ASSERT(to->info.predecessors.flags != 0);
-	size = LPG_(smart_list_count)(to->info.predecessors.nodes);
-	for (i = 0; i < size; i++) {
-		CfgNode* tmp = (CfgNode*) LPG_(smart_list_at)(to->info.predecessors.nodes, i);
-		LPG_ASSERT(tmp != 0);
-
-		if (LPG_(cfgnodes_cmp)(tmp, from)) {
-			LPG_(bitset_set_pos_value)(to->info.predecessors.flags, i, virtual);
-			break;
-		}
-	}
-	LPG_ASSERT(i < size);
-
-out:
 	// Mark the CFG as dirty.
 	cfg->dirty = True;
 
@@ -285,13 +236,11 @@ CfgNode* new_cfgnode(enum CfgNodeType type, Int succs, Int preds) {
 	node->type = type;
 
 	if (succs > 0) {
-		node->info.successors.nodes = LPG_(new_smart_list)(succs);
-		node->info.successors.flags = LPG_(new_bitset)(succs);
+		node->info.successors = LPG_(new_smart_list)(succs);
 	}
 
 	if (preds > 0) {
-		node->info.predecessors.nodes = LPG_(new_smart_list)(preds);
-		node->info.predecessors.flags = LPG_(new_bitset)(preds);
+		node->info.predecessors = LPG_(new_smart_list)(preds);
 	}
 
 	return node;
@@ -548,20 +497,14 @@ void delete_cfgnode(CfgNode* node) {
 			break;
 	}
 
-	if (node->info.successors.nodes) {
-		LPG_(smart_list_clear)(node->info.successors.nodes, 0);
-		LPG_(delete_smart_list)(node->info.successors.nodes);
-
-		LPG_ASSERT(node->info.successors.flags);
-		LPG_(delete_bitset)(node->info.successors.flags);
+	if (node->info.successors) {
+		LPG_(smart_list_clear)(node->info.successors, 0);
+		LPG_(delete_smart_list)(node->info.successors);
 	}
 
-	if (node->info.predecessors.nodes) {
-		LPG_(smart_list_clear)(node->info.predecessors.nodes, 0);
-		LPG_(delete_smart_list)(node->info.predecessors.nodes);
-
-		LPG_ASSERT(node->info.predecessors.flags);
-		LPG_(delete_bitset)(node->info.predecessors.flags);
+	if (node->info.predecessors) {
+		LPG_(smart_list_clear)(node->info.predecessors, 0);
+		LPG_(delete_smart_list)(node->info.predecessors);
 	}
 
 #if CFG_NODE_CACHE_SIZE > 0
@@ -638,7 +581,7 @@ void remove_phantom(CFG* cfg, CfgNode* phantom) {
 static
 Bool cfgnode_add_call(CFG* cfg, CfgNode* node, CFG* call) {
 	if (!has_node_call(node, call)) {
-		LPG_ASSERT(!LPG_(cfgnode_has_successor_with_addr)(node, call->addr, 0));
+		LPG_ASSERT(!LPG_(cfgnode_has_successor_with_addr)(node, call->addr));
 
 		if (!node->data.block->calls)
 			node->data.block->calls = LPG_(new_smart_list)(1);
@@ -698,32 +641,29 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	last->next = 0;
 	pred = new_cfgnode_block(cfg, first);
 
-	// Move the predecessors of node to pred, including the flags.
-	LPG_(smart_list_copy)(pred->info.predecessors.nodes, node->info.predecessors.nodes);
-	LPG_(smart_list_clear)(node->info.predecessors.nodes, 0);
-	LPG_(bitset_copy)(pred->info.predecessors.flags, node->info.predecessors.flags);
-	LPG_(bitset_clear)(node->info.predecessors.flags);
+	// Move the predecessors of node to pred.
+	LPG_(smart_list_copy)(pred->info.predecessors, node->info.predecessors);
+	LPG_(smart_list_clear)(node->info.predecessors, 0);
 
 	// Fix the predecessor's successors.
-	LPG_ASSERT(pred->info.predecessors.nodes != 0);
-	size = LPG_(smart_list_count)(pred->info.predecessors.nodes);
+	LPG_ASSERT(pred->info.predecessors != 0);
+	size = LPG_(smart_list_count)(pred->info.predecessors);
 	for (i = 0; i < size; i++) {
 		Int j, size2;
 		CfgNode* tmp;
 
-		tmp = (CfgNode*) LPG_(smart_list_at)(pred->info.predecessors.nodes, i);
+		tmp = (CfgNode*) LPG_(smart_list_at)(pred->info.predecessors, i);
 		LPG_ASSERT(tmp != 0);
 
-		LPG_ASSERT(tmp->info.successors.nodes != 0);
-		size2 = LPG_(smart_list_count)(tmp->info.successors.nodes);
+		LPG_ASSERT(tmp->info.successors != 0);
+		size2 = LPG_(smart_list_count)(tmp->info.successors);
 		for (j = 0; j < size2; j++) {
-			CfgNode* tmp2 = (CfgNode*) LPG_(smart_list_at)(tmp->info.successors.nodes, j);
+			CfgNode* tmp2 = (CfgNode*) LPG_(smart_list_at)(tmp->info.successors, j);
 			LPG_ASSERT(tmp2 != 0);
 
 			// Update the node and finish the search.
 			if (LPG_(cfgnodes_cmp)(tmp2, node)) {
-				LPG_(smart_list_set)(tmp->info.successors.nodes, j, pred);
-				// Do not update the flags of this predecessor, since it should be mantained the same.
+				LPG_(smart_list_set)(tmp->info.successors, j, pred);
 				break;
 			}
 		}
@@ -733,7 +673,7 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	}
 
 	// Finally, connect both nodes.
-	add_edge2nodes(cfg, pred, node, False);
+	add_edge2nodes(cfg, pred, node);
 
 	// Return the created predecessor.
 	return pred;
@@ -1030,12 +970,12 @@ Addr LPG_(cfgnode_size)(CfgNode* node) {
 
 SmartList* LPG_(cfgnode_successors)(CfgNode* node) {
 	LPG_ASSERT(node != 0);
-	return node->info.successors.nodes;
+	return node->info.successors;
 }
 
 SmartList* LPG_(cfgnode_predecessors)(CfgNode* node) {
 	LPG_ASSERT(node != 0);
-	return node->info.predecessors.nodes;
+	return node->info.predecessors;
 }
 
 Bool LPG_(cfgnode_is_visited)(CfgNode* node) {
@@ -1073,29 +1013,23 @@ Bool LPG_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr) {
 	return False;
 }
 
-Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr, Bool* is_virtual) {
+Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr) {
 	Int i, size;
 
 	LPG_ASSERT(node != 0);
 	LPG_ASSERT(addr != 0);
 
-	size = LPG_(smart_list_count)(node->info.successors.nodes);
+	size = LPG_(smart_list_count)(node->info.successors);
 	for (i = 0; i < size; i++) {
-		CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, i);
+		CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors, i);
 		LPG_ASSERT(succ != 0);
 
 		// Ignore exit nodes. Entry nodes should never be successor.
 		if (succ->type == CFG_EXIT || succ->type == CFG_HALT)
 			continue;
 
-		if (LPG_(cfgnode_addr)(succ) == addr) {
-			if (is_virtual) {
-				LPG_ASSERT(node->info.successors.flags != 0);
-				*is_virtual = LPG_(bitset_get_pos)(node->info.successors.flags, i);
-			}
-
+		if (LPG_(cfgnode_addr)(succ) == addr)
 			return True;
-		}
 	}
 
 	return False;
@@ -1104,12 +1038,12 @@ Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr, Bool* is_vi
 void LPG_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr) {
 	Int i, size;
 
-	if (!node->info.successors.nodes)
+	if (!node->info.successors)
 		return;
 
-	size = LPG_(smart_list_count)(node->info.successors.nodes);
+	size = LPG_(smart_list_count)(node->info.successors);
 	for (i = 0; i < size; i++) {
-		CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, i);
+		CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors, i);
 		LPG_ASSERT(succ != 0);
 
 		// Ignore exit nodes.
@@ -1125,15 +1059,15 @@ void LPG_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr
 
 			switch (succ->type) {
 				case CFG_BLOCK:
-					LPG_ASSERT(succ->info.predecessors.nodes != 0);
+					LPG_ASSERT(succ->info.predecessors != 0);
 
 					// Ensure that it has more than one predecessor, the node
 					// will not be orphan.
-					size2 = LPG_(smart_list_count)(succ->info.predecessors.nodes);
+					size2 = LPG_(smart_list_count)(succ->info.predecessors);
 					LPG_ASSERT(size2 > 1);
 
 					for (j = 0; j < size2; j++) {
-						CfgNode* pred = (CfgNode*) LPG_(smart_list_at)(succ->info.predecessors.nodes, j);
+						CfgNode* pred = (CfgNode*) LPG_(smart_list_at)(succ->info.predecessors, j);
 						LPG_ASSERT(pred != 0);
 
 						if (pred == node)
@@ -1144,22 +1078,16 @@ void LPG_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr
 					LPG_ASSERT(j < size2);
 
 					// Remove predecessor.
-					last = LPG_(smart_list_at)(succ->info.predecessors.nodes, (size2 - 1));
-					LPG_(smart_list_set)(succ->info.predecessors.nodes, j, last);
-					LPG_(smart_list_set)(succ->info.predecessors.nodes, (size2 - 1), 0);
-
-					// Update the predecessor virtual flag as well.
-					LPG_ASSERT(succ->info.predecessors.flags != 0);
-					LPG_(bitset_set_pos_value)(succ->info.predecessors.flags, i,
-							LPG_(bitset_get_pos)(succ->info.predecessors.flags, (size - 1)));
-					LPG_(bitset_clear_pos)(succ->info.predecessors.flags, (size - 1));
+					last = LPG_(smart_list_at)(succ->info.predecessors, (size2 - 1));
+					LPG_(smart_list_set)(succ->info.predecessors, j, last);
+					LPG_(smart_list_set)(succ->info.predecessors, (size2 - 1), 0);
 
 					break;
 				case CFG_PHANTOM:
 					// This means that the node must be a phantom.
 					// Ensure that it has only one predecessor (safe to remove).
-					LPG_ASSERT(succ->info.predecessors.nodes != 0);
-					LPG_ASSERT(LPG_(smart_list_count)(succ->info.predecessors.nodes) == 1);
+					LPG_ASSERT(succ->info.predecessors != 0);
+					LPG_ASSERT(LPG_(smart_list_count)(succ->info.predecessors) == 1);
 
 					// Remove the phantom node.
 					remove_phantom(cfg, succ);
@@ -1170,15 +1098,9 @@ void LPG_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr
 			}
 
 			// Update the sucessors list without it.
-			last = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, size-1);
-			LPG_(smart_list_set)(node->info.successors.nodes, i, last);
-			LPG_(smart_list_set)(node->info.successors.nodes, (size - 1), 0);
-
-			// Update the virtual flag as well.
-			LPG_ASSERT(node->info.successors.flags != 0);
-			LPG_(bitset_set_pos_value)(node->info.successors.flags, i,
-					LPG_(bitset_get_pos)(node->info.successors.flags, size-1));
-			LPG_(bitset_clear_pos)(node->info.successors.flags, size-1);
+			last = (CfgNode*) LPG_(smart_list_at)(node->info.successors, size-1);
+			LPG_(smart_list_set)(node->info.successors, i, last);
+			LPG_(smart_list_set)(node->info.successors, (size - 1), 0);
 
 			return;
 		}
@@ -1193,7 +1115,7 @@ Bool LPG_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2) {
 static __inline__
 Bool cfgnode_has_successors(CfgNode* node) {
 	LPG_ASSERT(node != 0 && node->type == CFG_BLOCK);
-	return LPG_(smart_list_count)(node->info.successors.nodes) > 0;
+	return LPG_(smart_list_count)(node->info.successors) > 0;
 }
 
 static __inline__
@@ -1206,13 +1128,13 @@ static __inline__
 CfgInstrRef* get_succ_instr(CFG* cfg, CfgNode* from, Addr addr) {
 	Int i, size;
 
-	LPG_ASSERT(from->info.successors.nodes != 0);
-	size = LPG_(smart_list_count)(from->info.successors.nodes);
+	LPG_ASSERT(from->info.successors != 0);
+	size = LPG_(smart_list_count)(from->info.successors);
 	for (i = 0; i < size; i++) {
 		CfgNode* node;
 		CfgInstrRef* ref;
 
-		node = (CfgNode*) LPG_(smart_list_at)(from->info.successors.nodes, i);
+		node = (CfgNode*) LPG_(smart_list_at)(from->info.successors, i);
 		LPG_ASSERT(node != 0);
 
 		switch (node->type) {
@@ -1343,7 +1265,7 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 					cfgnode_split(cfg, next);
 
 				LPG_ASSERT(ref_is_head(next));
-				add_edge2nodes(cfg, dangling, next->node, False);
+				add_edge2nodes(cfg, dangling, next->node);
 				dangling = next->node;
 			} else {
 				next = new_instr_ref(LPG_(get_instr)(addr, size));
@@ -1354,7 +1276,7 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 					cfgnode_add_ref(cfg, dangling, next);
 				} else {
 					CfgNode* node = new_cfgnode_block(cfg, next);
-					add_edge2nodes(cfg, dangling, node, False);
+					add_edge2nodes(cfg, dangling, node);
 					dangling = node;
 				}
 			}
@@ -1443,8 +1365,8 @@ void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 			new_cfgnode_phantom(cfg, next);
 		}
 
-		// Connect the nodes with a virtual edge.
-		add_edge2nodes(cfg, dangling, next->node, True);
+		// Connect the nodes.
+		add_edge2nodes(cfg, dangling, next->node);
 	}
 }
 
@@ -1492,7 +1414,7 @@ CfgNode* LPG_(cfgnode_set_exit)(CFG* cfg, CfgNode* dangling) {
 #endif
 
 	// Add the node if it is does not exist yet.
-	add_edge2nodes(cfg, dangling, cfgnode_exit(cfg), False);
+	add_edge2nodes(cfg, dangling, cfgnode_exit(cfg));
 	return cfg->exit;
 }
 
@@ -1502,7 +1424,7 @@ CfgNode* LPG_(cfgnode_set_halt)(CFG* cfg, CfgNode* dangling) {
 	LPG_ASSERT(dangling->type == CFG_BLOCK);
 
 	// Add the node if it is does not exist yet.
-	add_edge2nodes(cfg, dangling, cfgnode_halt(cfg), False);
+	add_edge2nodes(cfg, dangling, cfgnode_halt(cfg));
 	return cfg->halt;
 }
 
@@ -1541,10 +1463,10 @@ void LPG_(check_cfg)(CFG* cfg) {
 					CfgInstrRef* ref;
 
 					// An entry node has no predecessors and only a single successor.
-					LPG_ASSERT(node->info.predecessors.nodes == 0);
-					LPG_ASSERT(node->info.successors.nodes != 0 && LPG_(smart_list_count)(node->info.successors.nodes) == 1);
+					LPG_ASSERT(node->info.predecessors == 0);
+					LPG_ASSERT(node->info.successors != 0 && LPG_(smart_list_count)(node->info.successors) == 1);
 
-					tmp = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, 0);
+					tmp = (CfgNode*) LPG_(smart_list_at)(node->info.successors, 0);
 					LPG_ASSERT(tmp != 0 && tmp->type == CFG_BLOCK);
 
 					// We must have at least one instruction per block.
@@ -1560,8 +1482,8 @@ void LPG_(check_cfg)(CFG* cfg) {
 			case CFG_EXIT:
 			case CFG_HALT:
 				// An exit node has no successors and must have at least one predecessor.
-				LPG_ASSERT(node->info.successors.nodes == 0);
-				LPG_ASSERT(node->info.predecessors.nodes != 0 && LPG_(smart_list_count)(node->info.predecessors.nodes) > 0);
+				LPG_ASSERT(node->info.successors == 0);
+				LPG_ASSERT(node->info.predecessors != 0 && LPG_(smart_list_count)(node->info.predecessors) > 0);
 
 				break;
 			case CFG_BLOCK:
@@ -1571,8 +1493,8 @@ void LPG_(check_cfg)(CFG* cfg) {
 					CfgBlock* block;
 
 					// A block node must have at least one predecessor and one sucessor.
-					LPG_ASSERT(node->info.predecessors.nodes != 0 && LPG_(smart_list_count)(node->info.predecessors.nodes) > 0);
-					LPG_ASSERT(node->info.successors.nodes != 0 && LPG_(smart_list_count)(node->info.successors.nodes) > 0);
+					LPG_ASSERT(node->info.predecessors != 0 && LPG_(smart_list_count)(node->info.predecessors) > 0);
+					LPG_ASSERT(node->info.successors != 0 && LPG_(smart_list_count)(node->info.successors) > 0);
 
 					block = node->data.block;
 					LPG_ASSERT(block != 0);
@@ -1603,7 +1525,7 @@ void LPG_(check_cfg)(CFG* cfg) {
 							CFG* called = (CFG*) LPG_(smart_list_at)(block->calls, j);
 							LPG_ASSERT(called != 0);
 
-							LPG_ASSERT(!LPG_(cfgnode_has_successor_with_addr)(node, called->addr, 0));
+							LPG_ASSERT(!LPG_(cfgnode_has_successor_with_addr)(node, called->addr));
 						}
 					}
 
@@ -1614,8 +1536,8 @@ void LPG_(check_cfg)(CFG* cfg) {
 				break;
 			case CFG_PHANTOM:
 				// A phantom must have at least one predecessor and no successors.
-				LPG_ASSERT(node->info.predecessors.nodes != 0 && LPG_(smart_list_count)(node->info.predecessors.nodes) > 0);
-				LPG_ASSERT(node->info.successors.nodes == 0 || LPG_(smart_list_count)(node->info.successors.nodes) == 0);
+				LPG_ASSERT(node->info.predecessors != 0 && LPG_(smart_list_count)(node->info.predecessors) > 0);
+				LPG_ASSERT(node->info.successors == 0 || LPG_(smart_list_count)(node->info.successors) == 0);
 
 				// The phantom address must not be 0.
 				LPG_ASSERT(node->data.phantom != 0);
@@ -1623,25 +1545,6 @@ void LPG_(check_cfg)(CFG* cfg) {
 				break;
 			default:
 				tl_assert(0);
-		}
-
-		if (node->info.successors.nodes != 0) {
-			size2 = LPG_(smart_list_count)(node->info.successors.nodes);
-			for (j = 0; j < size2; j++) {
-				CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, j);
-				LPG_ASSERT(succ != 0);
-
-				// Check if the edge is virtual.
-				if (LPG_(bitset_get_pos)(node->info.successors.flags, j)) {
-					// The entry must not connect a successor with a virtual edge.
-					LPG_ASSERT(node->type != CFG_ENTRY);
-					// The successor exit node must not have a virtual edge.
-					LPG_ASSERT(succ->type != CFG_EXIT && succ->type != CFG_HALT);
-				} else {
-					// A phantom node must not have a real (not virtual) edge.
-					LPG_ASSERT(succ->type != CFG_PHANTOM);
-				}
-			}
 		}
 	}
 
@@ -1763,12 +1666,10 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 			tl_assert(0);
 		}
 
-		if (node->info.successors.nodes != 0) {
-			LPG_ASSERT(node->info.successors.flags != 0);
-
-			size2 = LPG_(smart_list_count)(node->info.successors.nodes);
+		if (node->info.successors != 0) {
+			size2 = LPG_(smart_list_count)(node->info.successors);
 			for (j = 0; j < size2; j++) {
-				CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, j);
+				CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors, j);
 				LPG_ASSERT(succ != 0);
 				LPG_ASSERT(succ->type != CFG_ENTRY);
 
@@ -1785,14 +1686,9 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 				else
 					VG_(fprintf)(out, "\"0x%lx\"", LPG_(cfgnode_addr)(succ));
 
-				// Check the edge dashed if the edge is virtual.
-				if (LPG_(bitset_get_pos)(node->info.successors.flags, j)) {
-					LPG_ASSERT(succ->type != CFG_EXIT && succ->type != CFG_HALT);
+				// Dashed edge if successor ir phantom.
+				if (succ->type == CFG_PHANTOM)
 					VG_(fprintf)(out, " [style=dashed]");
-				} else {
-					// If the edge is not virtual, the succ cannot be a phantom node.
-					LPG_ASSERT(succ->type != CFG_PHANTOM);
-				}
 
 				VG_(fprintf)(out, "\n");
 			}
@@ -1883,9 +1779,9 @@ void write_cfg(CFG* cfg) {
 			VG_(fprintf)(fp, "%s ", node->data.block->indirect ? "true" : "false");
 
 			VG_(fprintf)(fp, "[");
-			size2 = LPG_(smart_list_count)(node->info.successors.nodes);
+			size2 = LPG_(smart_list_count)(node->info.successors);
 			for (j = 0; j < size2; j++) {
-				CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors.nodes, j);
+				CfgNode* succ = (CfgNode*) LPG_(smart_list_at)(node->info.successors, j);
 				LPG_ASSERT(succ != 0);
 
 				if (j > 0)
@@ -1902,14 +1798,6 @@ void write_cfg(CFG* cfg) {
 						break;
 					default:
 						tl_assert(0);
-				}
-
-				// If the edge is virtual, append a marker after it.
-				if (LPG_(bitset_get_pos)(node->info.successors.flags, j)) {
-					LPG_ASSERT(succ->type != CFG_EXIT && succ->type != CFG_HALT);
-					VG_(fprintf)(fp, "\'");
-				} else {
-					LPG_ASSERT(succ->type != CFG_PHANTOM);
 				}
 			}
 			VG_(fprintf)(fp, "]");
@@ -1982,10 +1870,6 @@ Bool next_token(Int fd) {
 				} else if (c == '\"') {
 					token.type = TKN_TEXT;
 					state = 6;
-				} else if (c == '\'') {
-					token.text[idx++] = c;
-					token.type = TKN_PRIME;
-					state = 8;
 				} else if (c == '#') {
 					state = 7;
 				} else {
@@ -2167,7 +2051,7 @@ void LPG_(read_cfgs)(Int fd) {
 
 				// If the address match the CFG's addr, then it is the entry block.
 				if (addr == cfg->addr)
-					add_edge2nodes(cfg, cfg->entry, node, False);
+					add_edge2nodes(cfg, cfg->entry, node);
 
 				addr += size;
 
@@ -2223,13 +2107,13 @@ void LPG_(read_cfgs)(Int fd) {
 					   token.type == TKN_ADDR) {
 					switch (token.type) {
 						case TKN_EXIT:
-							add_edge2nodes(cfg, node, cfgnode_exit(cfg), False);
+							add_edge2nodes(cfg, node, cfgnode_exit(cfg));
 
 							has = next_token(fd);
 							LPG_ASSERT(has);
 							break;
 						case TKN_HALT:
-							add_edge2nodes(cfg, node, cfgnode_halt(cfg), False);
+							add_edge2nodes(cfg, node, cfgnode_halt(cfg));
 
 							has = next_token(fd);
 							LPG_ASSERT(has);
@@ -2241,17 +2125,10 @@ void LPG_(read_cfgs)(Int fd) {
 								new_cfgnode_phantom(cfg, ref);
 							}
 
+							add_edge2nodes(cfg, node, ref->node);
+
 							has = next_token(fd);
 							LPG_ASSERT(has);
-
-							if (token.type == TKN_PRIME) {
-								add_edge2nodes(cfg, node, ref->node, True);
-
-								has = next_token(fd);
-								LPG_ASSERT(has);
-							} else {
-								add_edge2nodes(cfg, node, ref->node, False);
-							}
 
 							break;
 						default:
