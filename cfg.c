@@ -1187,7 +1187,8 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	UInt bb_idx, size;
 	InstrGroupInfo group;
 	Int accumulated_size;
-	CfgInstrRef* curr_ref;
+	CfgInstrRef* curr;
+	CfgInstrRef* next;
 #if CFG_NODE_CACHE_SIZE > 0
 	Int idx;
 	CfgNodeCache* cache;
@@ -1213,67 +1214,69 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	bb_idx = group.bb_info.first_instr;
 	base_addr = bb_addr(bb);
 
-	// Last processed instruction for this group.
-	curr_ref = 0;
+	// Current instruction reference in the dangling node,
+	// can be any from head to tail. We use it to match the
+	// instructions in the group in sequence.
+	//
+	// A null value is used to indicate that the current
+	// instruction in the group must be a successor of
+	// the dangling node. The first instruction of this
+	// group must always be a successor, hence the null value.
+	curr = 0;
 
 	accumulated_size = 0;
 	while (accumulated_size < group.group_size) {
-		CfgInstrRef* next;
-
-		if (curr_ref) {
-			// If the instruction is the first in the block and its size
-			// matches the group size, then try to skip it as a whole.
-			if (ref_is_head(curr_ref) &&
-				((accumulated_size + dangling->data.block->size) <= group.group_size)) {
-					accumulated_size += dangling->data.block->size;
-					bb_idx += dangling->data.block->instrs.count;
-
-					curr_ref = 0;
-			} else {
-				do {
-					LPG_ASSERT(bb_idx < bb->instr_count);
-					addr = base_addr + bb->instr[bb_idx].instr_offset;
-					size = bb->instr[bb_idx].instr_size;
-
-					LPG_ASSERT(curr_ref->instr->addr == addr);
-					LPG_ASSERT(curr_ref->instr->size == size);
-
-					accumulated_size += size;
-					bb_idx++;
-
-					curr_ref = curr_ref->next;
-				} while (curr_ref && accumulated_size < group.group_size);
-			}
-		} else {
+		// If null, find the successor of the dangling that
+		// matches the current instruction in the group.
+		// Create, split or transform the node if necessary.
+		if (!curr) {
 			LPG_ASSERT(bb_idx < bb->instr_count);
 			addr = base_addr + bb->instr[bb_idx].instr_offset;
 			size = bb->instr[bb_idx].instr_size;
 
-			// If we have a successor with this address.
+			// First check if we have a successor with this address already.
+			// Although this conditional block it is not required for the
+			// correctness of the algorithm (it is also covered by the next
+			// conditional statement), it is considerably faster overall
+			// to search the list first and then check the hash if necessary.
 			if ((next = get_succ_instr(cfg, dangling, addr))) {
-				// If it is a phantom, convert it to a block.
+				// The successor may be a phantom node, in this case convert to a block.
 				if (next->node->type == CFG_PHANTOM)
 					phantom2block(cfg, next->node, size);
 
+				// Use it as the new dangling node.
 				LPG_ASSERT(ref_is_head(next));
 				dangling = next->node;
-			// Otherwise, check if this address already exists somewhere else in the CFG.
+			// If it is not a direct successor, check if there is a instruction
+			// with this address already exists in the CFG in some block.
+			// This block will be a successor of the dangling node.
 			} else if ((next = cfg_instr_find(cfg, addr))) {
+				// If the next node is a phantom, convert to a block node.
 				if (next->node->type == CFG_PHANTOM)
 					phantom2block(cfg, next->node, size);
+				// If the instruction is not the first in the block, split it.
 				else if (!ref_is_head(next))
 					cfgnode_split(cfg, next);
 
+				// Connect the dangling block to this and make it the current
+				// dangling node.
 				LPG_ASSERT(ref_is_head(next));
 				add_edge2nodes(cfg, dangling, next->node);
 				dangling = next->node;
+			// In this case, the instruction is new and we can:
+			// (1) append it to the dangling node (if possible); or
+			// (2) create a new block with it as the head instruction that
+			// will be connected to the dangling. This block will be the
+			// new dangling node.
 			} else {
 				next = new_instr_ref(LPG_(get_instr)(addr, size));
-				// Check if we can append the instrution reference in the dangling block.
+				// Append the instruction if possible.
 				if (dangling->type == CFG_BLOCK &&
 					(dangling->data.block->instrs.tail->instr->addr + dangling->data.block->instrs.tail->instr->size) == addr &&
 					!cfgnode_has_successors(dangling) && !cfgnode_has_calls(dangling)) {
 					cfgnode_add_ref(cfg, dangling, next);
+				// Create a new block, connect the dangling to it and
+				// make it the new dangling node.
 				} else {
 					CfgNode* node = new_cfgnode_block(cfg, next);
 					add_edge2nodes(cfg, dangling, node);
@@ -1281,13 +1284,39 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 				}
 			}
 
-			curr_ref = next;
+			// Now, this will be our current instruction.
+			curr = next;
+		}
+
+		// Try to process the whole block if possible.
+		if (ref_is_head(curr) &&
+				((accumulated_size + dangling->data.block->size) <= group.group_size)) {
+			accumulated_size += dangling->data.block->size;
+			bb_idx += dangling->data.block->instrs.count;
+
+			curr = 0;
+		// Otherwise, process instruction by instruction in the block.
+		} else {
+			do {
+				LPG_ASSERT(bb_idx < bb->instr_count);
+				addr = base_addr + bb->instr[bb_idx].instr_offset;
+				size = bb->instr[bb_idx].instr_size;
+
+				LPG_ASSERT(curr->instr->addr == addr);
+				LPG_ASSERT(curr->instr->size == size);
+
+				accumulated_size += size;
+				bb_idx++;
+
+				curr = curr->next;
+			} while (curr && accumulated_size < group.group_size);
 		}
 	}
 	LPG_ASSERT(accumulated_size == group.group_size);
 
-	if (curr_ref && !ref_is_tail(curr_ref))
-		dangling = cfgnode_split(cfg, curr_ref->next);
+	// If we didn't reach the end of the block, we must split it.
+	if (curr && !ref_is_tail(curr))
+		dangling = cfgnode_split(cfg, curr->next);
 
 #if CFG_NODE_CACHE_SIZE > 0
 	cache->data[idx].block.dangling = dangling;
@@ -1348,7 +1377,7 @@ void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 	// Get the successor if it has the leader with address "to"
 	next = get_succ_instr(cfg, dangling, to);
 
-	// If it is not existant, take some actions.
+	// If it does not exist, take some actions.
 	if (!next) {
 		// If there is no next instruction, check if the address
 		// is already present in another part of the code.
