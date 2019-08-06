@@ -1271,9 +1271,10 @@ CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 			} else {
 				next = new_instr_ref(LPG_(get_instr)(addr, size));
 				// Append the instruction if possible.
-				if (dangling->type == CFG_BLOCK &&
-					(dangling->data.block->instrs.tail->instr->addr + dangling->data.block->instrs.tail->instr->size) == addr &&
+				if (bb_idx > 0 && dangling->type == CFG_BLOCK &&
 					!cfgnode_has_successors(dangling) && !cfgnode_has_calls(dangling)) {
+					LPG_ASSERT((dangling->data.block->instrs.tail->instr->addr +
+							dangling->data.block->instrs.tail->instr->size) == addr);
 					cfgnode_add_ref(cfg, dangling, next);
 				// Create a new block, connect the dangling to it and
 				// make it the new dangling node.
