@@ -1,11 +1,16 @@
+/*--------------------------------------------------------------------*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                        clo.c ---*/
+/*--------------------------------------------------------------------*/
+
 /*
-   This file is part of Callgrind, a Valgrind tool for call graph
-   profiling programs.
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
 
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This tool is derived from and contains lot of code from Callgrind
    Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
-
-   This tool is derived from and contains lot of code from Cachegrind
-   Copyright (C) 2002-2017 Nicholas Nethercote (njn@valgrind.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -43,54 +48,54 @@
 /*--- Command line processing                                      ---*/
 /*--------------------------------------------------------------------*/
 
-Bool LPG_(process_cmd_line_option)(const HChar* arg)
+Bool CGD_(process_cmd_line_option)(const HChar* arg)
 {
    const HChar* tmp_str;
 
    if (False) {}
-#if LPG_ENABLE_DEBUG
-   else if VG_INT_CLO(arg, "--ct-verbose", LPG_(clo).verbose) {}
-   else if VG_INT_CLO(arg, "--ct-vstart",  LPG_(clo).verbose_start) {}
+#if CGD_ENABLE_DEBUG
+   else if VG_INT_CLO(arg, "--ct-verbose", CGD_(clo).verbose) {}
+   else if VG_INT_CLO(arg, "--ct-vstart",  CGD_(clo).verbose_start) {}
 #endif
 
-   else if VG_STR_CLO(arg, "--cfg-outfile", LPG_(clo).cfg_outfile) {}
-   else if VG_STR_CLO(arg, "--cfg-infile", LPG_(clo).cfg_infile) {}
-   else if VG_BOOL_CLO(arg, "--ignore-failed-cfg", LPG_(clo).ignore_failed) {}
+   else if VG_STR_CLO(arg, "--cfg-outfile", CGD_(clo).cfg_outfile) {}
+   else if VG_STR_CLO(arg, "--cfg-infile", CGD_(clo).cfg_infile) {}
+   else if VG_BOOL_CLO(arg, "--ignore-failed-cfg", CGD_(clo).ignore_failed) {}
    else if VG_STR_CLO(arg, "--cfg-dump", tmp_str) {
 	   if (VG_(strcmp)(tmp_str, "all") == 0) {
-		   LPG_ASSERT(LPG_(clo).dump_cfgs.all == False);
-		   LPG_ASSERT(LPG_(clo).dump_cfgs.addrs == 0);
-		   LPG_ASSERT(LPG_(clo).dump_cfgs.fnames == 0);
+		   CGD_ASSERT(CGD_(clo).dump_cfgs.all == False);
+		   CGD_ASSERT(CGD_(clo).dump_cfgs.addrs == 0);
+		   CGD_ASSERT(CGD_(clo).dump_cfgs.fnames == 0);
 
-		   LPG_(clo).dump_cfgs.all = True;
+		   CGD_(clo).dump_cfgs.all = True;
 	   } else if (VG_(strcmp)(tmp_str, "none") == 0) {
-		   LPG_ASSERT(LPG_(clo).dump_cfgs.all == False);
-		   LPG_ASSERT(LPG_(clo).dump_cfgs.addrs == 0);
-		   LPG_ASSERT(LPG_(clo).dump_cfgs.fnames == 0);
+		   CGD_ASSERT(CGD_(clo).dump_cfgs.all == False);
+		   CGD_ASSERT(CGD_(clo).dump_cfgs.addrs == 0);
+		   CGD_ASSERT(CGD_(clo).dump_cfgs.fnames == 0);
 	   } else if (VG_(strncmp)(tmp_str, "0x", 2) == 0) {
 		   Addr addr;
 
-		   LPG_ASSERT(LPG_(clo).dump_cfgs.all == False);
+		   CGD_ASSERT(CGD_(clo).dump_cfgs.all == False);
 
 		   addr = VG_(strtoull16)(tmp_str, 0);
-		   LPG_ASSERT(addr != 0);
+		   CGD_ASSERT(addr != 0);
 
-		   if (LPG_(clo).dump_cfgs.addrs == 0)
-			   LPG_(clo).dump_cfgs.addrs = LPG_(new_smart_list)(1);
+		   if (CGD_(clo).dump_cfgs.addrs == 0)
+			   CGD_(clo).dump_cfgs.addrs = CGD_(new_smart_list)(1);
 
-		   LPG_(smart_list_add)(LPG_(clo).dump_cfgs.addrs, (void*) addr);
+		   CGD_(smart_list_add)(CGD_(clo).dump_cfgs.addrs, (void*) addr);
 	   } else {
-		   LPG_ASSERT(LPG_(clo).dump_cfgs.all == False);
+		   CGD_ASSERT(CGD_(clo).dump_cfgs.all == False);
 
-		   if (LPG_(clo).dump_cfgs.fnames == 0)
-			   LPG_(clo).dump_cfgs.fnames = LPG_(new_smart_list)(1);
+		   if (CGD_(clo).dump_cfgs.fnames == 0)
+			   CGD_(clo).dump_cfgs.fnames = CGD_(new_smart_list)(1);
 
-		   LPG_(smart_list_add)(LPG_(clo).dump_cfgs.fnames,
-				   (void*) LPG_STRDUP("lg.clo.pclo.1", tmp_str));
+		   CGD_(smart_list_add)(CGD_(clo).dump_cfgs.fnames,
+				   (void*) CGD_STRDUP("cgd.clo.pclo.1", tmp_str));
 	   }
    }
-   else if VG_STR_CLO(arg, "--cfg-dump-dir", LPG_(clo).dump_cfgs.dir) {}
-   else if VG_STR_CLO(arg, "--instrs-map", LPG_(clo).instrs_map) {}
+   else if VG_STR_CLO(arg, "--cfg-dump-dir", CGD_(clo).dump_cfgs.dir) {}
+   else if VG_STR_CLO(arg, "--instrs-map", CGD_(clo).instrs_map) {}
 
    else
 	   return False;
@@ -98,7 +103,7 @@ Bool LPG_(process_cmd_line_option)(const HChar* arg)
    return True;
 }
 
-void LPG_(print_usage)(void)
+void CGD_(print_usage)(void)
 {
    VG_(printf)(
 "\n   control flow graph options:\n"
@@ -111,17 +116,13 @@ void LPG_(print_usage)(void)
 "    --cfg-dump-dir=<directory>   Directory where to dump the DOT cfgs [.]\n"
 "    --instrs-map=<f>             Instructions map (address:assembly per entry) file\n"
     );
-
-//   VG_(printf)("\n"
-//	       "  For full callgrind documentation, see\n"
-//	       "  "VG_PREFIX"/share/doc/callgrind/html/callgrind.html\n\n");
 }
 
-void LPG_(print_debug_usage)(void)
+void CGD_(print_debug_usage)(void)
 {
     VG_(printf)(
 
-#if LPG_ENABLE_DEBUG
+#if CGD_ENABLE_DEBUG
 "    --ct-verbose=<level>       Verbosity of standard debug output [0]\n"
 "    --ct-vstart=<BB number>    Only be verbose after basic block [0]\n"
 "    --ct-verbose<level>=<func> Verbosity while in <func>\n"
@@ -133,22 +134,22 @@ void LPG_(print_debug_usage)(void)
 }
 
 
-void LPG_(set_clo_defaults)(void)
+void CGD_(set_clo_defaults)(void)
 {
   /* Default values for command line arguments */
 
   /* cfg options */
-  LPG_(clo).cfg_outfile      = 0;
-  LPG_(clo).cfg_infile       = 0;
-  LPG_(clo).ignore_failed    = False;
-  LPG_(clo).dump_cfgs.all    = False;
-  LPG_(clo).dump_cfgs.addrs  = 0;
-  LPG_(clo).dump_cfgs.fnames = 0;
-  LPG_(clo).dump_cfgs.dir    = ".";
-  LPG_(clo).instrs_map       = 0;
+  CGD_(clo).cfg_outfile      = 0;
+  CGD_(clo).cfg_infile       = 0;
+  CGD_(clo).ignore_failed    = False;
+  CGD_(clo).dump_cfgs.all    = False;
+  CGD_(clo).dump_cfgs.addrs  = 0;
+  CGD_(clo).dump_cfgs.fnames = 0;
+  CGD_(clo).dump_cfgs.dir    = ".";
+  CGD_(clo).instrs_map       = 0;
 
-#if LPG_ENABLE_DEBUG
-  LPG_(clo).verbose = 0;
-  LPG_(clo).verbose_start = 0;
+#if CGD_ENABLE_DEBUG
+  CGD_(clo).verbose = 0;
+  CGD_(clo).verbose_start = 0;
 #endif
 }

@@ -1,3 +1,32 @@
+/*--------------------------------------------------------------------*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                     instrs.c ---*/
+/*--------------------------------------------------------------------*/
+
+/*
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
+
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
+
+   The GNU General Public License is contained in the file COPYING.
+*/
+
 #include "global.h"
 
 #define DEFAULT_POOL_SIZE 262144 // 256k instructions
@@ -6,19 +35,19 @@ SmartHash* instrs_pool = 0;
 
 static
 void delete_instr(UniqueInstr* instr) {
-	LPG_ASSERT(instr != 0);
+	CGD_ASSERT(instr != 0);
 
 	if (instr->name)
-		LPG_FREE(instr->name);
+		CGD_FREE(instr->name);
 
 	if (instr->desc) {
 		if (instr->desc->name != 0)
-			LPG_FREE(instr->desc->name);
+			CGD_FREE(instr->desc->name);
 
-		LPG_DATA_FREE(instr->desc, sizeof(InstrDesc));
+		CGD_DATA_FREE(instr->desc, sizeof(InstrDesc));
 	}
 
-	LPG_DATA_FREE(instr, sizeof(UniqueInstr));
+	CGD_DATA_FREE(instr, sizeof(UniqueInstr));
 }
 
 static
@@ -31,7 +60,7 @@ HChar* next_line(Int fd) {
     VG_(memset)(&buffer, 0, sizeof(buffer));
 
     while (True) {
-		LPG_ASSERT(idx >= 0 && idx < ((sizeof(buffer) / sizeof(HChar))-1));
+		CGD_ASSERT(idx >= 0 && idx < ((sizeof(buffer) / sizeof(HChar))-1));
 		s = VG_(read)(fd, &c, 1);
 		if (s == 0 || c == '\n')
 			break;
@@ -54,8 +83,8 @@ void read_instr_names(void) {
 	HChar* name;
 	UniqueInstr* instr;
 
-	if (LPG_(clo).instrs_map) {
-		fd = VG_(fd_open)(LPG_(clo).instrs_map, VKI_O_RDONLY, 0);
+	if (CGD_(clo).instrs_map) {
+		fd = VG_(fd_open)(CGD_(clo).instrs_map, VKI_O_RDONLY, 0);
 		if (fd < 0)
 			tl_assert(0);
 
@@ -67,8 +96,8 @@ void read_instr_names(void) {
 
 				addr = VG_(strtoull16)(line, 0);
 				if (addr != 0 && *name != 0) {
-					instr = LPG_(get_instr)(addr, 0);
-					instr->name = LPG_STRDUP("lg.instrs.rin.1", name);
+					instr = CGD_(get_instr)(addr, 0);
+					instr->name = CGD_STRDUP("cgd.instrs.rin.1", name);
 				}
 			}
 		}
@@ -77,70 +106,70 @@ void read_instr_names(void) {
 	}
 }
 
-void LPG_(init_instrs_pool)() {
-	LPG_ASSERT(instrs_pool == 0);
+void CGD_(init_instrs_pool)() {
+	CGD_ASSERT(instrs_pool == 0);
 
-	instrs_pool = LPG_(new_smart_hash)(DEFAULT_POOL_SIZE);
+	instrs_pool = CGD_(new_smart_hash)(DEFAULT_POOL_SIZE);
 
 	// set the growth rate to half the size.
-	LPG_(smart_hash_set_growth_rate)(instrs_pool, 1.5f);
+	CGD_(smart_hash_set_growth_rate)(instrs_pool, 1.5f);
 
 	// read instruction names.
 	read_instr_names();
 }
 
-void LPG_(destroy_instrs_pool)() {
-	LPG_ASSERT(instrs_pool != 0);
+void CGD_(destroy_instrs_pool)() {
+	CGD_ASSERT(instrs_pool != 0);
 
-	LPG_(smart_hash_clear)(instrs_pool, (void (*)(void*)) delete_instr);
-	LPG_(delete_smart_hash)(instrs_pool);
+	CGD_(smart_hash_clear)(instrs_pool, (void (*)(void*)) delete_instr);
+	CGD_(delete_smart_hash)(instrs_pool);
 	instrs_pool = 0;
 }
 
-UniqueInstr* LPG_(get_instr)(Addr addr, Int size) {
-	UniqueInstr* instr = LPG_(find_instr)(addr);
+UniqueInstr* CGD_(get_instr)(Addr addr, Int size) {
+	UniqueInstr* instr = CGD_(find_instr)(addr);
 	if (instr) {
-		LPG_ASSERT(instr->addr == addr);
+		CGD_ASSERT(instr->addr == addr);
 		if (size != 0) {
 			if (instr->size == 0) {
 				instr->size = size;
 			} else {
-				LPG_ASSERT(instr->size == size);
+				CGD_ASSERT(instr->size == size);
 			}
 		}
 	} else {
-		instr = (UniqueInstr*) LPG_MALLOC("lg.instrs.gi.1", sizeof(UniqueInstr));
+		instr = (UniqueInstr*) CGD_MALLOC("cgd.instrs.gi.1", sizeof(UniqueInstr));
 		VG_(memset)(instr, 0, sizeof(UniqueInstr));
 		instr->addr = addr;
 		instr->size = size;
 
-		LPG_(smart_hash_put)(instrs_pool, instr, (HWord (*)(void*)) LPG_(instr_addr));
+		CGD_(smart_hash_put)(instrs_pool, instr, (HWord (*)(void*)) CGD_(instr_addr));
 	}
 
 	return instr;
 }
 
-UniqueInstr* LPG_(find_instr)(Addr addr) {
-	return (UniqueInstr*) LPG_(smart_hash_get)(instrs_pool, addr, (HWord (*)(void*)) LPG_(instr_addr));
+UniqueInstr* CGD_(find_instr)(Addr addr) {
+	return (UniqueInstr*) CGD_(smart_hash_get)(instrs_pool, addr, (HWord (*)(void*)) CGD_(instr_addr));
 }
 
-Addr LPG_(instr_addr)(UniqueInstr* instr) {
-	LPG_ASSERT(instr != 0);
+Addr CGD_(instr_addr)(UniqueInstr* instr) {
+	CGD_ASSERT(instr != 0);
 	return instr->addr;
 }
 
-Int LPG_(instr_size)(UniqueInstr* instr) {
-	LPG_ASSERT(instr != 0);
+Int CGD_(instr_size)(UniqueInstr* instr) {
+	CGD_ASSERT(instr != 0);
 	return instr->size;
 }
 
-const HChar* LPG_(instr_name)(UniqueInstr* instr) {
-	LPG_ASSERT(instr != 0);
+const HChar* CGD_(instr_name)(UniqueInstr* instr) {
+	CGD_ASSERT(instr != 0);
 	return instr->name;
 }
 
-InstrDesc* LPG_(instr_description)(UniqueInstr* instr) {
-	LPG_ASSERT(instr != 0);
+InstrDesc* CGD_(instr_description)(UniqueInstr* instr) {
+	CGD_ASSERT(instr != 0);
 
 	if (!instr->desc) {
 		Bool found;
@@ -152,10 +181,10 @@ InstrDesc* LPG_(instr_description)(UniqueInstr* instr) {
 		found = VG_(get_filename_linenum)(ep, instr->addr,
 					&(tmpfile), &(tmpdir), &(tmpline));
 
-		instr->desc = (InstrDesc*) LPG_MALLOC("lg.instrs.id.1", sizeof(InstrDesc));
+		instr->desc = (InstrDesc*) CGD_MALLOC("cgd.instrs.id.1", sizeof(InstrDesc));
 		if (found) {
 		    /* Build up an absolute pathname, if there is a directory available */
-			instr->desc->name = (HChar*) LPG_MALLOC("lg.adesc.na.1",
+			instr->desc->name = (HChar*) CGD_MALLOC("cgd.adesc.na.1",
 		    		(VG_(strlen)(tmpdir) + 1 + VG_(strlen)(tmpfile) + 1));
 		    VG_(strcpy)(instr->desc->name, tmpdir);
 		    if (instr->desc->name[0] != '\0')
@@ -172,35 +201,35 @@ InstrDesc* LPG_(instr_description)(UniqueInstr* instr) {
 	return instr->desc;
 }
 
-Bool LPG_(instrs_cmp)(UniqueInstr* i1, UniqueInstr* i2) {
+Bool CGD_(instrs_cmp)(UniqueInstr* i1, UniqueInstr* i2) {
 	return i1 && i2 && i1->addr == i2->addr && i1->size == i2->size;
 }
 
-void LPG_(print_instr)(UniqueInstr* instr, Bool complete) {
-	LPG_ASSERT(instr != 0);
+void CGD_(print_instr)(UniqueInstr* instr, Bool complete) {
+	CGD_ASSERT(instr != 0);
 
 	VG_(printf)("0x%lx [%d]", instr->addr, instr->size);
 	if (complete) {
 		VG_(printf)(" (");
-		LPG_(print_instr_description)(LPG_(instr_description)(instr));
+		CGD_(print_instr_description)(CGD_(instr_description)(instr));
 		VG_(printf)(")");
 	}
 }
 
-void LPG_(fprint_instr)(VgFile* fp, UniqueInstr* instr, Bool complete) {
-	LPG_ASSERT(fp != 0);
-	LPG_ASSERT(instr != 0);
+void CGD_(fprint_instr)(VgFile* fp, UniqueInstr* instr, Bool complete) {
+	CGD_ASSERT(fp != 0);
+	CGD_ASSERT(instr != 0);
 
 	VG_(fprintf)(fp, "0x%lx [%d]", instr->addr, instr->size);
 	if (complete) {
 		VG_(fprintf)(fp, " (");
-		LPG_(fprint_instr_description)(fp, LPG_(instr_description)(instr));
+		CGD_(fprint_instr_description)(fp, CGD_(instr_description)(instr));
 		VG_(fprintf)(fp, ")");
 	}
 }
 
-void LPG_(print_instr_description)(InstrDesc* idesc) {
-	LPG_ASSERT(idesc != 0);
+void CGD_(print_instr_description)(InstrDesc* idesc) {
+	CGD_ASSERT(idesc != 0);
 
 	if (idesc->name)
 		VG_(printf)("%s:%d", idesc->name, idesc->lineno);
@@ -208,9 +237,9 @@ void LPG_(print_instr_description)(InstrDesc* idesc) {
 		VG_(printf)("unknown");
 }
 
-void LPG_(fprint_instr_description)(VgFile* fp, InstrDesc* idesc) {
-	LPG_ASSERT(fp != 0);
-	LPG_ASSERT(idesc != 0);
+void CGD_(fprint_instr_description)(VgFile* fp, InstrDesc* idesc) {
+	CGD_ASSERT(fp != 0);
+	CGD_ASSERT(idesc != 0);
 
 	if (idesc->name)
 		VG_(fprintf)(fp, "%s:%d", idesc->name, idesc->lineno);

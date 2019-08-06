@@ -1,11 +1,15 @@
 /*--------------------------------------------------------------------*/
-/*--- Callgrind                                                    ---*/
-/*---                                               ct_callstack.c ---*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                  callstack.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Callgrind, a Valgrind tool for call tracing.
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
 
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This tool is derived from and contains lot of code from Callgrind
    Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
@@ -43,16 +47,16 @@
 
 #define N_CALL_STACK_INITIAL_ENTRIES 500
 
-call_stack LPG_(current_call_stack);
+call_stack CGD_(current_call_stack);
 
-void LPG_(init_call_stack)(call_stack* s)
+void CGD_(init_call_stack)(call_stack* s)
 {
   Int i;
 
-  LPG_ASSERT(s != 0);
+  CGD_ASSERT(s != 0);
 
   s->size = N_CALL_STACK_INITIAL_ENTRIES;   
-  s->entry = (call_entry*) LPG_MALLOC("cl.callstack.ics.1",
+  s->entry = (call_entry*) CGD_MALLOC("cgd.callstack.ics.1",
                                       s->size * sizeof(call_entry));
   s->sp = 0;
 
@@ -62,34 +66,34 @@ void LPG_(init_call_stack)(call_stack* s)
   }
 }
 
-void LPG_(destroy_call_stack)(call_stack* s) {
-	LPG_ASSERT(s != 0);
+void CGD_(destroy_call_stack)(call_stack* s) {
+	CGD_ASSERT(s != 0);
 
-	LPG_FREE(s->entry);
+	CGD_FREE(s->entry);
 }
 
-call_entry* LPG_(get_call_entry)(Int sp)
+call_entry* CGD_(get_call_entry)(Int sp)
 {
-  LPG_ASSERT(sp <= LPG_(current_call_stack).sp);
-  return &(LPG_(current_call_stack).entry[sp]);
+  CGD_ASSERT(sp <= CGD_(current_call_stack).sp);
+  return &(CGD_(current_call_stack).entry[sp]);
 }
 
-void LPG_(copy_current_call_stack)(call_stack* dst)
+void CGD_(copy_current_call_stack)(call_stack* dst)
 {
-  LPG_ASSERT(dst != 0);
+  CGD_ASSERT(dst != 0);
 
-  dst->size  = LPG_(current_call_stack).size;
-  dst->entry = LPG_(current_call_stack).entry;
-  dst->sp    = LPG_(current_call_stack).sp;
+  dst->size  = CGD_(current_call_stack).size;
+  dst->entry = CGD_(current_call_stack).entry;
+  dst->sp    = CGD_(current_call_stack).sp;
 }
 
-void LPG_(set_current_call_stack)(call_stack* s)
+void CGD_(set_current_call_stack)(call_stack* s)
 {
-  LPG_ASSERT(s != 0);
+  CGD_ASSERT(s != 0);
 
-  LPG_(current_call_stack).size  = s->size;
-  LPG_(current_call_stack).entry = s->entry;
-  LPG_(current_call_stack).sp    = s->sp;
+  CGD_(current_call_stack).size  = s->size;
+  CGD_(current_call_stack).entry = s->entry;
+  CGD_(current_call_stack).sp    = s->sp;
 }
 
 
@@ -97,7 +101,7 @@ static __inline__
 void ensure_stack_size(Int i)
 {
   Int oldsize;
-  call_stack *cs = &LPG_(current_call_stack);
+  call_stack *cs = &CGD_(current_call_stack);
 
   if (i < cs->size) return;
 
@@ -105,7 +109,7 @@ void ensure_stack_size(Int i)
   cs->size *= 2;
   while (i > cs->size) cs->size *= 2;
 
-  cs->entry = (call_entry*) LPG_REALLOC("cl.callstack.ess.1",
+  cs->entry = (call_entry*) CGD_REALLOC("cgd.callstack.ess.1",
 		  	  	  cs->entry, cs->size * sizeof(call_entry));
 
   for(i=oldsize; i<cs->size; i++) {
@@ -113,11 +117,11 @@ void ensure_stack_size(Int i)
     cs->entry[i].dangling = 0;
   }
 
-  LPG_(stat).call_stack_resizes++;
+  CGD_(stat).call_stack_resizes++;
  
-  LPG_DEBUGIF(2)
+  CGD_DEBUGIF(2)
     VG_(printf)("        call stack enlarged to %u entries\n",
-		LPG_(current_call_stack).size);
+		CGD_(current_call_stack).size);
 }
 
 /* Push call on call stack.
@@ -125,7 +129,7 @@ void ensure_stack_size(Int i)
  * Increment the usage count for the function called.
  * A jump from <from> to <to>, with <sp>.
  */
-void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
+void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 {
     call_entry* current_entry;
     Addr ret_addr;
@@ -136,12 +140,12 @@ void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 
     /* Ensure a call stack of size <current_sp>+1.
      */
-    ensure_stack_size(LPG_(current_call_stack).sp +1);
-    current_entry = &(LPG_(current_call_stack).entry[LPG_(current_call_stack).sp]);
+    ensure_stack_size(CGD_(current_call_stack).sp +1);
+    current_entry = &(CGD_(current_call_stack).entry[CGD_(current_call_stack).sp]);
 
     /* return address is only is useful with a real call;
      * used to detect RET w/o CALL */
-    if (from->jmp[jmp].jmpkind == jk_Call) {
+    if (from->jmp[jmp].jmpkind == bjk_Call) {
 		UInt instr = from->jmp[jmp].instr;
 		ret_addr = bb_addr(from) +
 						from->instr[instr].instr_offset +
@@ -150,43 +154,43 @@ void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
     		ret_addr = 0;
     }
 
-    callee = LPG_(get_cfg)(to->groups[0].group_addr);
+    callee = CGD_(get_cfg)(to->groups[0].group_addr);
 
 	// Let's update the fdesc if it is our first real call to it.
-	if (!LPG_(cfg_fdesc)(callee))
-		LPG_(cfg_build_fdesc)(callee);
+	if (!CGD_(cfg_fdesc)(callee))
+		CGD_(cfg_build_fdesc)(callee);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	callCache = LPG_(current_state).dangling->cache.call ?
-			&(LPG_(current_state).dangling->cache.call[CFG_NODE_CACHE_INDEX(callee->addr)]) : 0;
+	callCache = CGD_(current_state).dangling->cache.call ?
+			&(CGD_(current_state).dangling->cache.call[CFG_NODE_CACHE_INDEX(callee->addr)]) : 0;
 	if (!callCache ||
 			callCache->addr != callee->addr ||
 			callCache->indirect != from->jmp[jmp].indirect)
 #endif
-		LPG_(cfgnode_set_call)(LPG_(current_state).cfg, LPG_(current_state).dangling,
+		CGD_(cfgnode_set_call)(CGD_(current_state).cfg, CGD_(current_state).dangling,
 				callee, from->jmp[jmp].indirect);
 
     /* put jcc on call stack */
     current_entry->sp = sp;
     current_entry->ret_addr = ret_addr;
-    current_entry->cfg = LPG_(current_state).cfg;
-    current_entry->dangling = LPG_(current_state).dangling;
+    current_entry->cfg = CGD_(current_state).cfg;
+    current_entry->dangling = CGD_(current_state).dangling;
 
-    LPG_(current_call_stack).sp++;
+    CGD_(current_call_stack).sp++;
 
     /* To allow for above assertion we set context of next frame to 0 */
-    LPG_ASSERT(LPG_(current_call_stack).sp < LPG_(current_call_stack).size);
+    CGD_ASSERT(CGD_(current_call_stack).sp < CGD_(current_call_stack).size);
     current_entry++;
 
     current_entry->cfg = 0;
     current_entry->dangling = 0;
 
 	// If the parent cfg is inside main, then this CFG is inside main as well.
-	if (!LPG_(cfg_is_inside_main)(callee))
-		LPG_(cfg_set_inside_main)(callee, LPG_(cfg_is_inside_main)(LPG_(current_state).cfg));
+	if (!CGD_(cfg_is_inside_main)(callee))
+		CGD_(cfg_set_inside_main)(callee, CGD_(cfg_is_inside_main)(CGD_(current_state).cfg));
 
-    LPG_(current_state).cfg = callee;
-    LPG_(current_state).dangling = LPG_(cfg_entry_node)(callee);
+    CGD_(current_state).cfg = callee;
+    CGD_(current_state).dangling = CGD_(cfg_entry_node)(callee);
 }
 
 
@@ -195,49 +199,49 @@ void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
  *
  * If the JCC becomes inactive, call entries are freed if possible
  */
-void LPG_(pop_call_stack)(Bool halt) {
+void CGD_(pop_call_stack)(Bool halt) {
     call_entry* lower_entry;
 
-    if (LPG_(current_state).sig > 0) {
+    if (CGD_(current_state).sig > 0) {
 		/* Check if we leave a signal handler; this can happen when
 		 * calling longjmp() in the handler */
-		LPG_(run_post_signal_on_call_stack_bottom)();
+		CGD_(run_post_signal_on_call_stack_bottom)();
     }
 
     lower_entry =
-    		&(LPG_(current_call_stack).entry[LPG_(current_call_stack).sp-1]);
+    		&(CGD_(current_call_stack).entry[CGD_(current_call_stack).sp-1]);
 
-    LPG_DEBUG(4,"+ pop_call_stack: frame %d\n",
-		LPG_(current_call_stack).sp);
+    CGD_DEBUG(4,"+ pop_call_stack: frame %d\n",
+		CGD_(current_call_stack).sp);
 
 	if (halt) {
-		LPG_(cfgnode_set_halt)(LPG_(current_state).cfg, LPG_(current_state).dangling);
+		CGD_(cfgnode_set_halt)(CGD_(current_state).cfg, CGD_(current_state).dangling);
 	} else {
 #if CFG_NODE_CACHE_SIZE > 0
-		if (!LPG_(current_state).dangling->cache.exit)
+		if (!CGD_(current_state).dangling->cache.exit)
 #endif
-			LPG_(cfgnode_set_exit)(LPG_(current_state).cfg, LPG_(current_state).dangling);
+			CGD_(cfgnode_set_exit)(CGD_(current_state).cfg, CGD_(current_state).dangling);
     }
 
-	LPG_(current_state).cfg = lower_entry->cfg;
-	LPG_(current_state).dangling = lower_entry->dangling;
+	CGD_(current_state).cfg = lower_entry->cfg;
+	CGD_(current_state).dangling = lower_entry->dangling;
 
 	lower_entry->cfg = 0;
 	lower_entry->dangling = 0;
 
-    LPG_(current_call_stack).sp--;
+    CGD_(current_call_stack).sp--;
 }
 
 
 /* Unwind enough CallStack items to sync with current stack pointer.
  * Returns the number of stack frames unwinded.
  */
-Int LPG_(unwind_call_stack)(Addr sp, Int minpops)
+Int CGD_(unwind_call_stack)(Addr sp, Int minpops)
 {
     Int csp;
     Int unwind_count = 0;
-    LPG_DEBUG(4,"+ unwind_call_stack(sp %#lx, minpops %d): frame %d\n",
-	      sp, minpops, LPG_(current_call_stack).sp);
+    CGD_DEBUG(4,"+ unwind_call_stack(sp %#lx, minpops %d): frame %d\n",
+	      sp, minpops, CGD_(current_call_stack).sp);
 
     /* We pop old stack frames.
      * For a call, be p the stack address with return address.
@@ -245,21 +249,21 @@ Int LPG_(unwind_call_stack)(Addr sp, Int minpops)
      *  - current sp is after a RET: >= p
      */
     
-    while( (csp=LPG_(current_call_stack).sp) >0) {
-	call_entry* top_ce = &(LPG_(current_call_stack).entry[csp-1]);
+    while( (csp=CGD_(current_call_stack).sp) >0) {
+	call_entry* top_ce = &(CGD_(current_call_stack).entry[csp-1]);
 
 	if ((top_ce->sp < sp) ||
 	    ((top_ce->sp == sp) && minpops>0)) {
 
 	    minpops--;
 	    unwind_count++;
-	    LPG_(pop_call_stack)(False);
-	    csp=LPG_(current_call_stack).sp;
+	    CGD_(pop_call_stack)(False);
+	    csp=CGD_(current_call_stack).sp;
 	    continue;
 	}
 	break;
     }
 
-    LPG_DEBUG(4,"- unwind_call_stack\n");
+    CGD_DEBUG(4,"- unwind_call_stack\n");
     return unwind_count;
 }

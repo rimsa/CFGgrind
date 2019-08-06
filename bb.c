@@ -1,11 +1,15 @@
 /*--------------------------------------------------------------------*/
-/*--- Callgrind                                                    ---*/
+/*--- CFGgrind                                                     ---*/
 /*---                                                         bb.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Callgrind, a Valgrind tool for call tracing.
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
 
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This tool is derived from and contains lot of code from Callgrind
    Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
@@ -36,19 +40,19 @@
 /* BB hash, resizable */
 bb_hash bbs;
 
-void LPG_(init_bb_hash)() {
+void CGD_(init_bb_hash)() {
    Int i;
 
    bbs.size    = 8437;
    bbs.entries = 0;
-   bbs.table = (BB**) LPG_MALLOC("cl.bb.ibh.1",
+   bbs.table = (BB**) CGD_MALLOC("cgd.bb.ibh.1",
                                  bbs.size * sizeof(BB*));
 
    for (i = 0; i < bbs.size; i++)
 	   bbs.table[i] = NULL;
 }
 
-void LPG_(destroy_bb_hash)() {
+void CGD_(destroy_bb_hash)() {
 	Int i;
 	Int size;
 
@@ -61,20 +65,20 @@ void LPG_(destroy_bb_hash)() {
 				+ bb->instr_count * sizeof(InstrInfo)
 				+ (bb->cjmp_count+1) * sizeof(CJmpInfo)
 				+ bb->groups_count * sizeof(InstrGroupInfo);
-			LPG_DATA_FREE(bb, size);
+			CGD_DATA_FREE(bb, size);
 
 			bb = next;
 			bbs.entries--;
 		}
 	}
 
-	LPG_ASSERT(bbs.entries == 0);
+	CGD_ASSERT(bbs.entries == 0);
 
-	LPG_FREE(bbs.table);
+	CGD_FREE(bbs.table);
 	bbs.table = 0;
 }
 
-bb_hash* LPG_(get_bb_hash)()
+bb_hash* CGD_(get_bb_hash)()
 {
   return &bbs;
 }
@@ -98,7 +102,7 @@ void resize_bb_table(void)
     UInt new_idx;
 
     new_size  = 2* bbs.size +3;
-    new_table = (BB**) LPG_MALLOC("cl.bb.rbt.1",
+    new_table = (BB**) CGD_MALLOC("cgd.bb.rbt.1",
                                   new_size * sizeof(BB*));
  
     for (i = 0; i < new_size; i++)
@@ -125,15 +129,15 @@ void resize_bb_table(void)
 	}
     }
 
-    LPG_FREE(bbs.table);
+    CGD_FREE(bbs.table);
 
-    LPG_DEBUG(0, "Resize BB Hash: %u => %d (entries %u, conflicts %d/%d)\n",
+    CGD_DEBUG(0, "Resize BB Hash: %u => %d (entries %u, conflicts %d/%d)\n",
 	     bbs.size, new_size,
 	     bbs.entries, conflicts1, conflicts2);
 
     bbs.size  = new_size;
     bbs.table = new_table;
-    LPG_(stat).bb_hash_resizes++;
+    CGD_(stat).bb_hash_resizes++;
 }
 
 
@@ -149,7 +153,7 @@ static BB* new_bb(obj_node* obj, PtrdiffT offset,
    UInt idx, size;
 
    // Remove me later.
-   LPG_ASSERT(groups_count > 0);
+   CGD_ASSERT(groups_count > 0);
 
    /* check fill degree of bb hash table and resize if needed (>80%) */
    bbs.entries++;
@@ -159,7 +163,7 @@ static BB* new_bb(obj_node* obj, PtrdiffT offset,
    size = sizeof(BB) + instr_count * sizeof(InstrInfo)
                      + (cjmp_count+1) * sizeof(CJmpInfo)
                      + groups_count * sizeof(InstrGroupInfo);
-   bb = (BB*) LPG_MALLOC("cl.bb.nb.1", size);
+   bb = (BB*) CGD_MALLOC("cgd.bb.nb.1", size);
    VG_(memset)(bb, 0, size);
 
    bb->obj        = obj;
@@ -183,20 +187,20 @@ static BB* new_bb(obj_node* obj, PtrdiffT offset,
    bb->next = bbs.table[idx];
    bbs.table[idx] = bb;
 
-   LPG_(stat).distinct_bbs++;
+   CGD_(stat).distinct_bbs++;
 
-#if LPG_ENABLE_DEBUG
-   LPG_DEBUGIF(3) {
+#if CGD_ENABLE_DEBUG
+   CGD_DEBUGIF(3) {
      VG_(printf)("  new_bb (instr %u, jmps %u, inv %s) [now %d]: ",
 		 instr_count, cjmp_count,
 		 cjmp_inverted ? "yes":"no",
-		 LPG_(stat).distinct_bbs);
-      LPG_(print_bb)(0, bb);
+		 CGD_(stat).distinct_bbs);
+      CGD_(print_bb)(0, bb);
       VG_(printf)("\n");
    }
 #endif
 
-   LPG_(get_fn_node)(bb);
+   CGD_(get_fn_node)(bb);
 
    return bb;
 }
@@ -217,7 +221,7 @@ BB* lookup_bb(obj_node* obj, PtrdiffT offset)
       bb = bb->next;
     }
 
-    LPG_DEBUG(5, "  lookup_bb (Obj %s, off %#lx): %p\n",
+    CGD_DEBUG(5, "  lookup_bb (Obj %s, off %#lx): %p\n",
               obj->name, (UWord)offset, bb);
     return bb;
 }
@@ -231,7 +235,7 @@ obj_node* obj_of_address(Addr addr)
 
   DiEpoch ep = VG_(current_DiEpoch)();
   di = VG_(find_DebugInfo)(ep, addr);
-  obj = LPG_(get_obj_node)( di );
+  obj = CGD_(get_obj_node)( di );
 
   /* Update symbol offset in object if remapped */
   /* FIXME (or at least check this) 2008 Feb 19: 'offset' is
@@ -240,12 +244,12 @@ obj_node* obj_of_address(Addr addr)
   if (obj->offset != offset) {
       Addr start = di ? VG_(DebugInfo_get_text_avma)(di) : 0;
 
-      LPG_DEBUG(0, "Mapping changed for '%s': %#lx -> %#lx\n",
+      CGD_DEBUG(0, "Mapping changed for '%s': %#lx -> %#lx\n",
 		obj->name, obj->start, start);
 
       /* Size should be the same, and offset diff == start diff */
-      LPG_ASSERT( obj->size == (di ? VG_(DebugInfo_get_text_size)(di) : 0) );
-      LPG_ASSERT( obj->start - start == obj->offset - offset );
+      CGD_ASSERT( obj->size == (di ? VG_(DebugInfo_get_text_size)(di) : 0) );
+      CGD_ASSERT( obj->start - start == obj->offset - offset );
       obj->offset = offset;
       obj->start = start;
   }
@@ -259,7 +263,7 @@ obj_node* obj_of_address(Addr addr)
  * set to False. Otherwise, seen_before is set to True.
  *
  * BBs are never discarded. There are 2 cases where this function
- * is called from LPG_(instrument)() and a BB already exists:
+ * is called from CGD_(instrument)() and a BB already exists:
  * - The instrumented version was removed from Valgrinds TT cache
  * - The ELF object of the BB was unmapped and mapped again.
  *   This involves a possibly different address, but is handled by
@@ -268,14 +272,14 @@ obj_node* obj_of_address(Addr addr)
  * bbIn==0 is possible for artificial BB without real code.
  * Such a BB is created when returning to an unknown function.
  */
-BB* LPG_(get_bb)(Addr addr, IRSB* bbIn, /*OUT*/ Bool *seen_before)
+BB* CGD_(get_bb)(Addr addr, IRSB* bbIn, /*OUT*/ Bool *seen_before)
 {
   BB*   bb;
   obj_node* obj;
   UInt n_instrs, n_jmps, n_groups;
   Bool cjmp_inverted = False;
 
-  LPG_DEBUG(5, "+ get_bb(BB %#lx)\n", addr);
+  CGD_DEBUG(5, "+ get_bb(BB %#lx)\n", addr);
 
   obj = obj_of_address(addr);
   bb = lookup_bb(obj, addr - obj->offset);
@@ -283,7 +287,7 @@ BB* LPG_(get_bb)(Addr addr, IRSB* bbIn, /*OUT*/ Bool *seen_before)
   n_instrs = 0;
   n_jmps = 0;
   n_groups = 0;
-  LPG_(collectBlockInfo)(bbIn, &n_instrs, &n_jmps, &cjmp_inverted, &n_groups);
+  CGD_(collectBlockInfo)(bbIn, &n_instrs, &n_jmps, &cjmp_inverted, &n_groups);
 
   *seen_before = bb ? True : False;
   if (*seen_before) {
@@ -298,26 +302,26 @@ BB* LPG_(get_bb)(Addr addr, IRSB* bbIn, /*OUT*/ Bool *seen_before)
 		   "  old: Obj %s, Off %#lx, BBOff %#lx, Instrs %u\n",
 		   bb->obj->name, (UWord)bb->obj->offset,
 		   (UWord)bb->offset, bb->instr_count);
-      LPG_ASSERT(bb->instr_count == n_instrs);
+      CGD_ASSERT(bb->instr_count == n_instrs);
     }
-    LPG_ASSERT(bb->cjmp_count == n_jmps);
-    LPG_ASSERT(bb->groups_count == n_groups);
-    LPG_(stat).bb_retranslations++;
+    CGD_ASSERT(bb->cjmp_count == n_jmps);
+    CGD_ASSERT(bb->groups_count == n_groups);
+    CGD_(stat).bb_retranslations++;
 
-    LPG_DEBUG(5, "- get_bb(BB %#lx): seen before.\n", addr);
+    CGD_DEBUG(5, "- get_bb(BB %#lx): seen before.\n", addr);
     return bb;
   }
 
   bb = new_bb(obj, addr - obj->offset, n_instrs, n_jmps, cjmp_inverted, n_groups);
 
-  LPG_DEBUG(5, "- get_bb(BB %#lx)\n", addr);
+  CGD_DEBUG(5, "- get_bb(BB %#lx)\n", addr);
 
   return bb;
 }
 
 /* Delete the BB info for the bb with unredirected entry-point
    address 'addr'. */
-void LPG_(delete_bb)(Addr addr)
+void CGD_(delete_bb)(Addr addr)
 {
     BB  *bb, *bp;
     Int idx, size;
@@ -338,14 +342,11 @@ void LPG_(delete_bb)(Addr addr)
     }
 
     if (bb == NULL) {
-	LPG_DEBUG(3, "  delete_bb (Obj %s, off %#lx): NOT FOUND\n",
-		  obj->name, (UWord)offset);
+		CGD_DEBUG(3, "  delete_bb (Obj %s, off %#lx): NOT FOUND\n",
+			  obj->name, (UWord)offset);
 
-	/* we didn't find it.
-	 * this happens when callgrinds instrumentation mode
-	 * was off at BB translation time, ie. no BB was created.
-	 */
-	return;
+		/* we didn't find it. */
+		return;
     }
 
     /* unlink it from hash table */
@@ -359,7 +360,7 @@ void LPG_(delete_bb)(Addr addr)
        bp->next = bb->next;
     }
 
-    LPG_DEBUG(3, "  delete_bb (Obj %s, off %#lx): %p\n",
+    CGD_DEBUG(3, "  delete_bb (Obj %s, off %#lx): %p\n",
 	      obj->name, (UWord)offset, bb);
 
     // FIXME: We may be using this BB somewhere else.
@@ -369,19 +370,19 @@ void LPG_(delete_bb)(Addr addr)
 		+ bb->instr_count * sizeof(InstrInfo)
 		+ (bb->cjmp_count+1) * sizeof(CJmpInfo)
 		+ bb->groups_count * sizeof(InstrGroupInfo);
-	LPG_DATA_FREE(bb, size);
+	CGD_DATA_FREE(bb, size);
 }
 
 /*
  * Helper function called at start of each instrumented BB.
  */
 VG_REGPARM(1)
-void LPG_(setup_bb)(BB* bb) {
+void CGD_(setup_bb)(BB* bb) {
 	Bool call_emulation = False, delayed_push = False;
 	Addr sp;
 	BB* last_bb;
 	ThreadId tid;
-	LpgJumpKind jmpkind;
+	BBJumpKind jmpkind;
 	Bool isConditionalJump;
 	Int passed = 0, p, csp;
 	Bool ret_without_call = False;
@@ -391,34 +392,34 @@ void LPG_(setup_bb)(BB* bb) {
 	CfgNodePhantomCache* phantomCache;
 #endif
 
-	LPG_DEBUG(3, "+ setup_bb(BB %#lx)\n", bb_addr(bb));
+	CGD_DEBUG(3, "+ setup_bb(BB %#lx)\n", bb_addr(bb));
 
 	/* This is needed because thread switches can not reliable be tracked
-	 * with callback LPG_(run_thread) only: we have otherwise no way to get
+	 * with callback CGD_(run_thread) only: we have otherwise no way to get
 	 * the thread ID after a signal handler returns.
 	 * This could be removed again if that bug is fixed in Valgrind.
 	 * This is in the hot path but hopefully not to costly.
 	 */
 	tid = VG_(get_running_tid)();
 #if 1
-	/* LPG_(switch_thread) is a no-op when tid is equal to LPG_(current_tid).
-	 * As this is on the hot path, we only call LPG_(switch_thread)(tid)
-	 * if tid differs from the LPG_(current_tid).
+	/* CGD_(switch_thread) is a no-op when tid is equal to CGD_(current_tid).
+	 * As this is on the hot path, we only call CGD_(switch_thread)(tid)
+	 * if tid differs from the CGD_(current_tid).
 	 */
-	if (UNLIKELY(tid != LPG_(current_tid)))
-		LPG_(switch_thread)(tid);
+	if (UNLIKELY(tid != CGD_(current_tid)))
+		CGD_(switch_thread)(tid);
 #else
-	LPG_ASSERT(VG_(get_running_tid)() == LPG_(current_tid));
+	CGD_ASSERT(VG_(get_running_tid)() == CGD_(current_tid));
 #endif
 
 	sp = VG_(get_SP)(tid);
-	last_bb = LPG_(current_state).bb;
+	last_bb = CGD_(current_state).bb;
 
 	if (last_bb) {
 		Int group;
 
-		passed = LPG_(current_state).jmps_passed;
-		LPG_ASSERT(passed <= last_bb->cjmp_count);
+		passed = CGD_(current_state).jmps_passed;
+		CGD_ASSERT(passed <= last_bb->cjmp_count);
 
 		jmpkind = last_bb->jmp[passed].jmpkind;
 		isConditionalJump = (passed < last_bb->cjmp_count);
@@ -427,33 +428,33 @@ void LPG_(setup_bb)(BB* bb) {
 		group = 0;
 		for (p = 0; p <= passed; p++) {
 #if CFG_NODE_CACHE_SIZE > 0
-			phantomCache = LPG_(current_state).dangling->cache.phantom ?
-					&(LPG_(current_state).dangling->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
+			phantomCache = CGD_(current_state).dangling->cache.phantom ?
+					&(CGD_(current_state).dangling->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
 			if (!phantomCache ||
 					phantomCache->addr != last_bb->jmp[p].dst ||
 					phantomCache->indirect != last_bb->jmp[p].indirect)
 #endif
-				LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
-						LPG_(current_state).dangling, last_bb->jmp[p].dst,
+				CGD_(cfgnode_set_phantom)(CGD_(current_state).cfg,
+						CGD_(current_state).dangling, last_bb->jmp[p].dst,
 						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
 
 			// Only process a new block if it is different from the previous one.
 			if (last_bb->jmp[p].group != group) {
 				// The next group must be immediately after the previous.
 				group++;
-				LPG_ASSERT(group == last_bb->jmp[p].group);
+				CGD_ASSERT(group == last_bb->jmp[p].group);
 
 #if CFG_NODE_CACHE_SIZE > 0
-				blockCache = LPG_(current_state).dangling->cache.block ?
-						&(LPG_(current_state).dangling->cache.block[CFG_NODE_CACHE_INDEX(last_bb->groups[group].group_addr)]) : 0;
+				blockCache = CGD_(current_state).dangling->cache.block ?
+						&(CGD_(current_state).dangling->cache.block[CFG_NODE_CACHE_INDEX(last_bb->groups[group].group_addr)]) : 0;
 				if (blockCache &&
 						blockCache->addr == last_bb->groups[group].group_addr &&
 						blockCache->size == last_bb->groups[group].group_size) {
-					LPG_(current_state).dangling = blockCache->dangling;
+					CGD_(current_state).dangling = blockCache->dangling;
 				} else {
 #endif
-					LPG_(current_state).dangling = LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
-							LPG_(current_state).dangling, last_bb, group);
+					CGD_(current_state).dangling = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
+							CGD_(current_state).dangling, last_bb, group);
 #if CFG_NODE_CACHE_SIZE > 0
 				}
 #endif
@@ -464,38 +465,38 @@ void LPG_(setup_bb)(BB* bb) {
 		// that they are phantom nodes.
 		while (p <= last_bb->cjmp_count && last_bb->jmp[p].group == group) {
 #if CFG_NODE_CACHE_SIZE > 0
-			phantomCache = LPG_(current_state).dangling->cache.phantom ?
-					&(LPG_(current_state).dangling->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
+			phantomCache = CGD_(current_state).dangling->cache.phantom ?
+					&(CGD_(current_state).dangling->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
 
 			if (!phantomCache ||
 					phantomCache->addr != last_bb->jmp[p].dst ||
 					phantomCache->indirect != last_bb->jmp[p].indirect)
 #endif
-				LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
-						LPG_(current_state).dangling, last_bb->jmp[p].dst,
+				CGD_(cfgnode_set_phantom)(CGD_(current_state).cfg,
+						CGD_(current_state).dangling, last_bb->jmp[p].dst,
 						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
 
 			p++;
 		}
 
-		LPG_DEBUGIF(4) {
-			LPG_(print_execstate)(-2, &LPG_(current_state));
+		CGD_DEBUGIF(4) {
+			CGD_(print_execstate)(-2, &CGD_(current_state));
 		}
 	} else {
-		jmpkind = jk_None;
+		jmpkind = bjk_None;
 		isConditionalJump = False;
 
-		LPG_(current_state).cfg = LPG_(get_cfg)(bb->groups[0].group_addr);
-		LPG_(current_state).dangling = LPG_(cfg_entry_node)(LPG_(current_state).cfg);
+		CGD_(current_state).cfg = CGD_(get_cfg)(bb->groups[0].group_addr);
+		CGD_(current_state).dangling = CGD_(cfg_entry_node)(CGD_(current_state).cfg);
 	}
 
 	/* Manipulate JmpKind if needed, only using BB specific info */
-	csp = LPG_(current_call_stack).sp;
+	csp = CGD_(current_call_stack).sp;
 
 	/* A return not matching the top call in our callstack is a jump */
-	if ((jmpkind == jk_Return) && (csp > 0)) {
+	if ((jmpkind == bjk_Return) && (csp > 0)) {
 		Int csp_up = csp - 1;
-		call_entry* top_ce = &(LPG_(current_call_stack).entry[csp_up]);
+		call_entry* top_ce = &(CGD_(current_call_stack).entry[csp_up]);
 
 		/* We have a real return if
 		 * - the stack pointer (SP) left the current stack frame, or
@@ -514,7 +515,7 @@ void LPG_(setup_bb)(BB* bb) {
 					break;
 				if (csp_up > 0) {
 					csp_up--;
-					top_ce = &(LPG_(current_call_stack).entry[csp_up]);
+					top_ce = &(CGD_(current_call_stack).entry[csp_up]);
 					if (top_ce->sp == sp) {
 						popcount_on_return++;
 						continue;
@@ -525,13 +526,13 @@ void LPG_(setup_bb)(BB* bb) {
 			}
 		}
 		if (popcount_on_return == 0) {
-			jmpkind = jk_Jump;
+			jmpkind = bjk_Jump;
 			ret_without_call = True;
 		}
 	}
 
 	/* Should this jump be converted to call or pop/call ? */
-	if ((jmpkind != jk_Return) && (jmpkind != jk_Call) && last_bb) {
+	if ((jmpkind != bjk_Return) && (jmpkind != bjk_Call) && last_bb) {
 		/* We simulate a JMP/Cont to be a CALL if
 		 * - jump is in another ELF object or section kind
 		 * - jump is to first instruction of a function (tail recursion)
@@ -550,29 +551,29 @@ void LPG_(setup_bb)(BB* bb) {
 				(last_bb->sect_kind != bb->sect_kind)
 				|| (last_bb->obj->number != bb->obj->number)) {
 
-			LPG_DEBUG(1, "     JMP: %s[%s] to %s[%s]%s!\n", last_bb->fn->name,
+			CGD_DEBUG(1, "     JMP: %s[%s] to %s[%s]%s!\n", last_bb->fn->name,
 					last_bb->obj->name, bb->fn->name, bb->obj->name,
 					ret_without_call ? " (RET w/o CALL)" : "");
 
-			jmpkind = jk_Call;
+			jmpkind = bjk_Call;
 			call_emulation = True;
 		}
 	}
 
-	LPG_DEBUGIF(1) {
+	CGD_DEBUGIF(1) {
 		if (isConditionalJump)
 			VG_(printf)("Cond-");
 		switch (jmpkind) {
-		case jk_None:
+		case bjk_None:
 			VG_(printf)("Fall-through");
 			break;
-		case jk_Jump:
+		case bjk_Jump:
 			VG_(printf)("Jump");
 			break;
-		case jk_Call:
+		case bjk_Call:
 			VG_(printf)("Call");
 			break;
-		case jk_Return:
+		case bjk_Return:
 			VG_(printf)("Return");
 			break;
 		default:
@@ -583,58 +584,58 @@ void LPG_(setup_bb)(BB* bb) {
 	}
 
 	/* Handle CALL/RET */
-	if (jmpkind == jk_Return) {
-		LPG_ASSERT(csp != 0);
-		LPG_ASSERT(popcount_on_return > 0);
-		LPG_(unwind_call_stack)(sp, popcount_on_return);
+	if (jmpkind == bjk_Return) {
+		CGD_ASSERT(csp != 0);
+		CGD_ASSERT(popcount_on_return > 0);
+		CGD_(unwind_call_stack)(sp, popcount_on_return);
 	} else {
-		Int unwind_count = LPG_(unwind_call_stack)(sp, 0);
+		Int unwind_count = CGD_(unwind_call_stack)(sp, 0);
 		if (unwind_count > 0) {
 			/* if unwinding was done, this actually is a return */
-			jmpkind = jk_Return;
+			jmpkind = bjk_Return;
 		}
 
-		if (jmpkind == jk_Call) {
+		if (jmpkind == bjk_Call) {
 			delayed_push = True;
 
-			csp = LPG_(current_call_stack).sp;
+			csp = CGD_(current_call_stack).sp;
 			if (call_emulation && csp > 0)
-				sp = LPG_(current_call_stack).entry[csp - 1].sp;
+				sp = CGD_(current_call_stack).entry[csp - 1].sp;
 		}
 	}
 
 	if (delayed_push) {
 		if (call_emulation)
-			LPG_(cfgnode_remove_successor_with_addr)(LPG_(current_state).cfg,
-					LPG_(current_state).dangling, bb->groups[0].group_addr);
+			CGD_(cfgnode_remove_successor_with_addr)(CGD_(current_state).cfg,
+					CGD_(current_state).dangling, bb->groups[0].group_addr);
 
-		LPG_(push_call_stack)(last_bb, passed, bb, sp);
+		CGD_(push_call_stack)(last_bb, passed, bb, sp);
 	}
 
-	LPG_(current_state).bb = bb;
+	CGD_(current_state).bb = bb;
 	/* Even though this will be set in instrumented code directly before
 	 * side exits, it needs to be set to 0 here in case an exception
 	 * happens in first instructions of the BB */
-	LPG_(current_state).jmps_passed = 0;
+	CGD_(current_state).jmps_passed = 0;
 
 #if CFG_NODE_CACHE_SIZE > 0
-	blockCache = LPG_(current_state).dangling->cache.block ?
-			&(LPG_(current_state).dangling->cache.block[CFG_NODE_CACHE_INDEX(bb->groups[0].group_addr)]) : 0;
+	blockCache = CGD_(current_state).dangling->cache.block ?
+			&(CGD_(current_state).dangling->cache.block[CFG_NODE_CACHE_INDEX(bb->groups[0].group_addr)]) : 0;
 	if (blockCache &&
 			blockCache->addr == bb->groups[0].group_addr &&
 			blockCache->size == bb->groups[0].group_size) {
-		LPG_(current_state).dangling = blockCache->dangling;
+		CGD_(current_state).dangling = blockCache->dangling;
 	} else {
 #endif
-		LPG_(current_state).dangling = LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
-				LPG_(current_state).dangling, bb, 0);
+		CGD_(current_state).dangling = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
+				CGD_(current_state).dangling, bb, 0);
 #if CFG_NODE_CACHE_SIZE > 0
 	}
 #endif
 
-	LPG_DEBUG(3,
+	CGD_DEBUG(3,
 			"- setup_bb (BB %#lx): Instrs %u (Len %u)\n",
 			bb_addr(bb), bb->instr_count, bb->instr_len);
 
-	LPG_(stat).bb_executions++;
+	CGD_(stat).bb_executions++;
 }

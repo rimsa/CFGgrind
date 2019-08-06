@@ -1,3 +1,32 @@
+/*--------------------------------------------------------------------*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                  smarthash.c ---*/
+/*--------------------------------------------------------------------*/
+
+/*
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
+
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
+
+   The GNU General Public License is contained in the file COPYING.
+*/
+
 #include "global.h"
 
 #if SMART_LIST_MODE == 1
@@ -37,13 +66,13 @@ struct _SmartList {
 
 static
 void grow_smart_list(SmartList* slist) {
-	LPG_ASSERT(slist != 0);
-	LPG_ASSERT(slist->data != 0);
+	CGD_ASSERT(slist != 0);
+	CGD_ASSERT(slist->data != 0);
 
 	if (slist->fixed)
 		tl_assert("Not allowed to enlarge this smart list.");
 
-	LPG_DEBUG(3, "[smartlist] Growing smart list from: %d to ", slist->size);
+	CGD_DEBUG(3, "[smartlist] Growing smart list from: %d to ", slist->size);
 
 #ifdef USING_CHAIN_SMART_LIST
 	{
@@ -62,29 +91,29 @@ void grow_smart_list(SmartList* slist) {
 		}
 
 		// Ensure that everything is safe so far.
-		LPG_ASSERT(slist->size == accumulated_size);
+		CGD_ASSERT(slist->size == accumulated_size);
 
 		// Grow the list.
 		last_size = (Int) (last_size * slist->growth_rate);
-		LPG_ASSERT(last_size > 0);
+		CGD_ASSERT(last_size > 0);
 		slist->size += last_size;
 
-		LPG_ASSERT(slist->size > 0);
-		LPG_DEBUG(3, "%u\n", slist->size);
+		CGD_ASSERT(slist->size > 0);
+		CGD_DEBUG(3, "%u\n", slist->size);
 
-		*snode = (SmartNode*) LPG_MALLOC("lg.smartlist.gsl.1", sizeof(SmartNode));
+		*snode = (SmartNode*) CGD_MALLOC("cgd.smartlist.gsl.1", sizeof(SmartNode));
 		(*snode)->size = last_size;
-		(*snode)->list = (void**) LPG_MALLOC("lg.smartlist.gsl.2", (last_size * sizeof(void*)));
+		(*snode)->list = (void**) CGD_MALLOC("cgd.smartlist.gsl.2", (last_size * sizeof(void*)));
 		VG_(memset)((*snode)->list, 0, (last_size * sizeof(void*)));
 		(*snode)->next = 0;
 	}
 #else
 	{
 		Int new_size = (Int) (slist->size * slist->growth_rate);
-		LPG_ASSERT(new_size > slist->size);
-		LPG_DEBUG(3, "%d\n", new_size);
+		CGD_ASSERT(new_size > slist->size);
+		CGD_DEBUG(3, "%d\n", new_size);
 
-		slist->data->list = LPG_REALLOC("lg.smartlist.gsl.1",
+		slist->data->list = CGD_REALLOC("cgd.smartlist.gsl.1",
 				slist->data->list, (new_size * sizeof(void*)));
 		VG_(memset)((slist->data->list + slist->size), 0,
 				((new_size - slist->size) * sizeof(void*)));
@@ -97,66 +126,66 @@ static
 SmartList* create_smart_list(Int size, Bool fixed) {
 	SmartList* slist;
 
-	LPG_ASSERT(size > 0);
+	CGD_ASSERT(size > 0);
 
-	LPG_DEBUG(3, "[smartlist] new smart list\n");
+	CGD_DEBUG(3, "[smartlist] new smart list\n");
 
-	slist = (SmartList*) LPG_MALLOC("lg.smartlist.nsl.1", sizeof(SmartList));
+	slist = (SmartList*) CGD_MALLOC("cgd.smartlist.nsl.1", sizeof(SmartList));
 	slist->elements = 0;
 	slist->size = size;
 	slist->fixed = fixed;
 	slist->growth_rate = 2.0f; // default: double the list.
-	slist->data = (SmartNode*) LPG_MALLOC("lg.smartlist.nsl.2", sizeof(SmartNode));
+	slist->data = (SmartNode*) CGD_MALLOC("cgd.smartlist.nsl.2", sizeof(SmartNode));
 
 #ifdef USING_CHAIN_SMART_LIST
-	slist->data->list = (void**) LPG_MALLOC("lg.smartlist.nsl.3", (size * sizeof(void*)));
+	slist->data->list = (void**) CGD_MALLOC("cgd.smartlist.nsl.3", (size * sizeof(void*)));
 	VG_(memset)(slist->data->list, 0, (size * sizeof(void*)));
 	slist->data->size = size;
 	slist->data->next = 0;
 #else
-	slist->data->list = (void**) LPG_MALLOC("lg.smartlist.nsl.3", (size * sizeof(void*)));
+	slist->data->list = (void**) CGD_MALLOC("cgd.smartlist.nsl.3", (size * sizeof(void*)));
 	VG_(memset)(slist->data->list, 0, (size * sizeof(void*)));
 #endif
 
 	return slist;
 }
 
-SmartList* LPG_(new_smart_list)(Int size) {
+SmartList* CGD_(new_smart_list)(Int size) {
 	return create_smart_list(size, False);
 }
 
-SmartList* LPG_(new_fixed_smart_list)(Int size) {
+SmartList* CGD_(new_fixed_smart_list)(Int size) {
 	return create_smart_list(size, True);
 }
 
-SmartList* LPG_(clone_smart_list)(SmartList* slist) {
+SmartList* CGD_(clone_smart_list)(SmartList* slist) {
 	Int i;
 	SmartList* new_slist;
 
-	LPG_ASSERT(slist != 0);
+	CGD_ASSERT(slist != 0);
 
 	new_slist = create_smart_list(slist->size, slist->fixed);
 	for (i = 0; i < slist->size; i++) {
 		void* element;
 
-		if ((element = LPG_(smart_list_at)(slist, i)))
-			LPG_(smart_list_set)(new_slist, i, element);
+		if ((element = CGD_(smart_list_at)(slist, i)))
+			CGD_(smart_list_set)(new_slist, i, element);
 	}
 
 	return new_slist;
 }
 
-void LPG_(delete_smart_list)(SmartList* slist) {
+void CGD_(delete_smart_list)(SmartList* slist) {
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
+	CGD_ASSERT(slist != 0);
 
 	// We can only delete a smart list with no elements.
 	// If the list is not clean, you must explicit call
 	// a function to clean it.
-	LPG_ASSERT(slist->elements == 0);
+	CGD_ASSERT(slist->elements == 0);
 
-	LPG_DEBUG(3, "[smartlist] delete smart list\n");
+	CGD_DEBUG(3, "[smartlist] delete smart list\n");
 
 	snode = slist->data;
 
@@ -164,25 +193,25 @@ void LPG_(delete_smart_list)(SmartList* slist) {
 	while (snode) {
 		SmartNode* tmp = snode->next;
 
-		LPG_DATA_FREE(snode->list, (snode->size * sizeof(void*)));
-		LPG_DATA_FREE(snode, sizeof(SmartNode));
+		CGD_DATA_FREE(snode->list, (snode->size * sizeof(void*)));
+		CGD_DATA_FREE(snode, sizeof(SmartNode));
 
 		snode = tmp;
 	}
 #else
-	LPG_DATA_FREE(snode->list, (slist->size * sizeof(void*)));
-	LPG_DATA_FREE(snode, sizeof(SmartNode));
+	CGD_DATA_FREE(snode->list, (slist->size * sizeof(void*)));
+	CGD_DATA_FREE(snode, sizeof(SmartNode));
 #endif
 
-	LPG_DATA_FREE(slist, sizeof(SmartList));
+	CGD_DATA_FREE(slist, sizeof(SmartList));
 }
 
-void LPG_(smart_list_clear)(SmartList* slist, void (*remove_element)(void*)) {
+void CGD_(smart_list_clear)(SmartList* slist, void (*remove_element)(void*)) {
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
+	CGD_ASSERT(slist != 0);
 
-	LPG_DEBUG(3, "[smartlist] clean smart list%s\n", (remove_element ? " with data" : ""));
+	CGD_DEBUG(3, "[smartlist] clean smart list%s\n", (remove_element ? " with data" : ""));
 
 	snode = slist->data;
 
@@ -220,26 +249,26 @@ void LPG_(smart_list_clear)(SmartList* slist, void (*remove_element)(void*)) {
 	slist->elements = 0;
 }
 
-Int LPG_(smart_list_size)(SmartList* slist) {
-	LPG_ASSERT(slist != 0);
+Int CGD_(smart_list_size)(SmartList* slist) {
+	CGD_ASSERT(slist != 0);
 	return slist->size;
 }
 
-Int LPG_(smart_list_count)(SmartList* slist) {
-	LPG_ASSERT(slist != 0);
+Int CGD_(smart_list_count)(SmartList* slist) {
+	CGD_ASSERT(slist != 0);
 	return slist->elements;
 }
 
-Bool LPG_(smart_list_is_empty)(SmartList* slist) {
-	LPG_ASSERT(slist != 0);
+Bool CGD_(smart_list_is_empty)(SmartList* slist) {
+	CGD_ASSERT(slist != 0);
 	return slist->elements == 0;
 }
 
-void* LPG_(smart_list_at)(SmartList* slist, Int index) {
+void* CGD_(smart_list_at)(SmartList* slist, Int index) {
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
-	LPG_ASSERT(index >= 0);
+	CGD_ASSERT(slist != 0);
+	CGD_ASSERT(index >= 0);
 
 	// If the index is out of bounds, return not found.
 	if (index < 0 || index >= slist->size)
@@ -263,29 +292,29 @@ void* LPG_(smart_list_at)(SmartList* slist, Int index) {
 #endif
 }
 
-void* LPG_(smart_list_head)(SmartList* slist) {
-	LPG_ASSERT(slist != 0);
-	LPG_ASSERT(LPG_(smart_list_count)(slist) > 0);
+void* CGD_(smart_list_head)(SmartList* slist) {
+	CGD_ASSERT(slist != 0);
+	CGD_ASSERT(CGD_(smart_list_count)(slist) > 0);
 
-	return LPG_(smart_list_at)(slist, 0);
+	return CGD_(smart_list_at)(slist, 0);
 }
 
-void* LPG_(smart_list_tail)(SmartList* slist) {
+void* CGD_(smart_list_tail)(SmartList* slist) {
 	Int last;
 
-	LPG_ASSERT(slist != 0);
+	CGD_ASSERT(slist != 0);
 
-	last = LPG_(smart_list_count)(slist) - 1;
-	LPG_ASSERT(last >= 0);
+	last = CGD_(smart_list_count)(slist) - 1;
+	CGD_ASSERT(last >= 0);
 
-	return LPG_(smart_list_at)(slist, last);
+	return CGD_(smart_list_at)(slist, last);
 }
 
-void LPG_(smart_list_set)(SmartList* slist, Int index, void* value) {
+void CGD_(smart_list_set)(SmartList* slist, Int index, void* value) {
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
-	LPG_ASSERT(index >= 0);
+	CGD_ASSERT(slist != 0);
+	CGD_ASSERT(index >= 0);
 
 	// Grow the smart list if the size is smaller than the index.
 	while (index >= slist->size)
@@ -323,11 +352,11 @@ void LPG_(smart_list_set)(SmartList* slist, Int index, void* value) {
 #endif
 }
 
-void LPG_(smart_list_del)(SmartList* slist, Int index, Bool remove_contents) {
+void CGD_(smart_list_del)(SmartList* slist, Int index, Bool remove_contents) {
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
-	LPG_ASSERT(index >= 0 && index < slist->size);
+	CGD_ASSERT(slist != 0);
+	CGD_ASSERT(index >= 0 && index < slist->size);
 
 	snode = slist->data;
 
@@ -336,7 +365,7 @@ void LPG_(smart_list_del)(SmartList* slist, Int index, Bool remove_contents) {
 		if (index < snode->size) {
 			if (snode->list[index]) {
 				if (remove_contents)
-					LPG_FREE(snode->list[index]);
+					CGD_FREE(snode->list[index]);
 
 				snode->list[index] = 0;
 				slist->elements--;
@@ -353,7 +382,7 @@ void LPG_(smart_list_del)(SmartList* slist, Int index, Bool remove_contents) {
 #else
 	if (snode->list[index]) {
 		if (remove_contents)
-			LPG_FREE(snode->list[index]);
+			CGD_FREE(snode->list[index]);
 
 		snode->list[index] = 0;
 		slist->elements--;
@@ -361,13 +390,13 @@ void LPG_(smart_list_del)(SmartList* slist, Int index, Bool remove_contents) {
 #endif
 }
 
-void LPG_(smart_list_add)(SmartList* slist, void* value) {
+void CGD_(smart_list_add)(SmartList* slist, void* value) {
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
+	CGD_ASSERT(slist != 0);
 
 	// If we are adding a new value, let it not be empty.
-	LPG_ASSERT(value != 0);
+	CGD_ASSERT(value != 0);
 
 	// If the list is full, grow it.
 	if (slist->elements == slist->size)
@@ -380,7 +409,7 @@ void LPG_(smart_list_add)(SmartList* slist, void* value) {
 		Int index = slist->elements;
 		while (snode) {
 			if (index < snode->size) {
-				LPG_ASSERT(snode->list[index] == 0);
+				CGD_ASSERT(snode->list[index] == 0);
 				snode->list[index] = value;
 				slist->elements++;
 
@@ -394,32 +423,32 @@ void LPG_(smart_list_add)(SmartList* slist, void* value) {
 		VG_(tool_panic)("cfggrind: unable to add smart list element");
 	}
 #else
-	LPG_ASSERT(snode->list[slist->elements] == 0);
+	CGD_ASSERT(snode->list[slist->elements] == 0);
 	snode->list[slist->elements++] = value;
 #endif
 }
 
-void LPG_(smart_list_copy)(SmartList* dst, SmartList* src) {
+void CGD_(smart_list_copy)(SmartList* dst, SmartList* src) {
 	Int i, size;
 
-	LPG_ASSERT(dst != 0);
-	LPG_ASSERT(src != 0);
+	CGD_ASSERT(dst != 0);
+	CGD_ASSERT(src != 0);
 
-	size = LPG_(smart_list_count)(src);
+	size = CGD_(smart_list_count)(src);
 	for (i = 0; i < size; i++)
-		LPG_(smart_list_set)(dst, i, LPG_(smart_list_at)(src, i));
+		CGD_(smart_list_set)(dst, i, CGD_(smart_list_at)(src, i));
 
-	size = LPG_(smart_list_count)(dst);
+	size = CGD_(smart_list_count)(dst);
 	for (; i < size; i++)
-		LPG_(smart_list_set)(dst, i, 0);
+		CGD_(smart_list_set)(dst, i, 0);
 }
 
-void LPG_(smart_list_forall)(SmartList* slist, Bool (*func)(void*, void*), void* arg) {
+void CGD_(smart_list_forall)(SmartList* slist, Bool (*func)(void*, void*), void* arg) {
 	Int index, count;
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
-	LPG_ASSERT(func != 0);
+	CGD_ASSERT(slist != 0);
+	CGD_ASSERT(func != 0);
 
 	// Fast check if the list is empty.
 	if (slist->elements == 0)
@@ -463,11 +492,11 @@ void LPG_(smart_list_forall)(SmartList* slist, Bool (*func)(void*, void*), void*
 #endif
 }
 
-Bool LPG_(smart_list_contains)(SmartList* slist, void* value, Bool (*cmp)(void*, void*)) {
+Bool CGD_(smart_list_contains)(SmartList* slist, void* value, Bool (*cmp)(void*, void*)) {
 	Int index, count;
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
+	CGD_ASSERT(slist != 0);
 
 	snode = slist->data;
 
@@ -505,26 +534,26 @@ Bool LPG_(smart_list_contains)(SmartList* slist, void* value, Bool (*cmp)(void*,
 	return False;
 }
 
-Float LPG_(smart_list_growth_rate)(SmartList* slist) {
-	LPG_ASSERT(slist != 0);
+Float CGD_(smart_list_growth_rate)(SmartList* slist) {
+	CGD_ASSERT(slist != 0);
 	return slist->growth_rate;
 }
 
-void LPG_(smart_list_set_growth_rate)(SmartList* slist, Float rate) {
-	LPG_ASSERT(slist != 0);
-	LPG_ASSERT(rate > 1.0f);
+void CGD_(smart_list_set_growth_rate)(SmartList* slist, Float rate) {
+	CGD_ASSERT(slist != 0);
+	CGD_ASSERT(rate > 1.0f);
 
 	slist->growth_rate = rate;
 }
 
-SmartValue* LPG_(smart_list_find)(SmartList* slist, Bool (*cmp)(void*, void*), void* arg) {
+SmartValue* CGD_(smart_list_find)(SmartList* slist, Bool (*cmp)(void*, void*), void* arg) {
 	Int index;
 	SmartValue *ret;
 	SmartValue **next;
 	SmartNode* snode;
 
-	LPG_ASSERT(slist != 0);
-	LPG_ASSERT(cmp != 0);
+	CGD_ASSERT(slist != 0);
+	CGD_ASSERT(cmp != 0);
 
 	ret = 0;
 	next = &(ret);
@@ -536,7 +565,7 @@ SmartValue* LPG_(smart_list_find)(SmartList* slist, Bool (*cmp)(void*, void*), v
 		Int tmp;
 		for (tmp = 0; tmp < snode->size; tmp++, index++) {
 			if (snode->list[tmp] && (*cmp)(snode->list[tmp], arg)) {
-				*next = (SmartValue*) LPG_MALLOC("lg.smartlist.slf.1", sizeof(SmartValue));
+				*next = (SmartValue*) CGD_MALLOC("cgd.smartlist.slf.1", sizeof(SmartValue));
 				(*next)->index = index;
 				(*next)->value = snode->list[tmp];
 				(*next)->next = 0;
@@ -550,7 +579,7 @@ SmartValue* LPG_(smart_list_find)(SmartList* slist, Bool (*cmp)(void*, void*), v
 #else
 	for (index = 0; index < slist->size; index++) {
 		if (snode->list[index] && (*cmp)(snode->list[index], arg)) {
-			*next = (SmartValue*) LPG_MALLOC("lg.smartlist.slf.1", sizeof(SmartValue));
+			*next = (SmartValue*) CGD_MALLOC("cgd.smartlist.slf.1", sizeof(SmartValue));
 			(*next)->index = index;
 			(*next)->value = snode->list[index];
 			(*next)->next = 0;
@@ -563,38 +592,38 @@ SmartValue* LPG_(smart_list_find)(SmartList* slist, Bool (*cmp)(void*, void*), v
 	return ret;
 }
 
-void LPG_(smart_list_delete_value)(SmartValue* sv) {
-	LPG_ASSERT(sv != 0);
+void CGD_(smart_list_delete_value)(SmartValue* sv) {
+	CGD_ASSERT(sv != 0);
 
 	while (sv) {
 		SmartValue* tmp = sv->next;
-		LPG_DATA_FREE(sv, sizeof(SmartValue));
+		CGD_DATA_FREE(sv, sizeof(SmartValue));
 		sv = tmp;
 	}
 }
 
-SmartSeek* LPG_(smart_list_seek)(SmartList* slist) {
+SmartSeek* CGD_(smart_list_seek)(SmartList* slist) {
 	SmartSeek* ss;
 
-	LPG_ASSERT(slist != 0);
+	CGD_ASSERT(slist != 0);
 
-	ss = (SmartSeek*) LPG_MALLOC("lg.smartlist.slr.1", sizeof(SmartSeek));
+	ss = (SmartSeek*) CGD_MALLOC("cgd.smartlist.slr.1", sizeof(SmartSeek));
 	VG_(memset)(ss, 0, sizeof(SmartSeek));
 
 	ss->slist = slist;
-	LPG_(smart_list_rewind)(ss);
+	CGD_(smart_list_rewind)(ss);
 
 	return ss;
 }
 
-void LPG_(smart_list_delete_seek)(SmartSeek* ss) {
-	LPG_ASSERT(ss != 0);
+void CGD_(smart_list_delete_seek)(SmartSeek* ss) {
+	CGD_ASSERT(ss != 0);
 
-	LPG_DATA_FREE(ss, sizeof(SmartSeek));
+	CGD_DATA_FREE(ss, sizeof(SmartSeek));
 }
 
-void LPG_(smart_list_rewind)(SmartSeek* ss) {
-	LPG_ASSERT(ss != 0);
+void CGD_(smart_list_rewind)(SmartSeek* ss) {
+	CGD_ASSERT(ss != 0);
 
 	ss->index = 0;
 
@@ -603,8 +632,8 @@ void LPG_(smart_list_rewind)(SmartSeek* ss) {
 #endif
 }
 
-Int LPG_(smart_list_get_index)(SmartSeek* ss) {
-	LPG_ASSERT(ss != 0);
+Int CGD_(smart_list_get_index)(SmartSeek* ss) {
+	CGD_ASSERT(ss != 0);
 
 #ifdef USING_CHAIN_SMART_LIST
 	{
@@ -614,12 +643,12 @@ Int LPG_(smart_list_get_index)(SmartSeek* ss) {
 		index = 0;
 		snode = ss->slist->data;
 
-		LPG_ASSERT(snode != 0);
-		LPG_ASSERT(ss->current != 0);
+		CGD_ASSERT(snode != 0);
+		CGD_ASSERT(ss->current != 0);
 		while (snode != *(ss->current)) {
 			index += snode->size;
 			snode = snode->next;
-			LPG_ASSERT(snode != 0);
+			CGD_ASSERT(snode != 0);
 		}
 
 		index += ss->index;
@@ -630,9 +659,9 @@ Int LPG_(smart_list_get_index)(SmartSeek* ss) {
 #endif
 }
 
-void LPG_(smart_list_set_index)(SmartSeek* ss, Int index) {
-	LPG_ASSERT(ss != 0);
-	LPG_ASSERT(index >= 0 && index < ss->slist->size);
+void CGD_(smart_list_set_index)(SmartSeek* ss, Int index) {
+	CGD_ASSERT(ss != 0);
+	CGD_ASSERT(index >= 0 && index < ss->slist->size);
 
 #ifdef USING_CHAIN_SMART_LIST
 	{
@@ -656,12 +685,12 @@ void LPG_(smart_list_set_index)(SmartSeek* ss, Int index) {
 
 static
 Bool seek_until_valid(SmartSeek* ss) {
-	LPG_ASSERT(ss != 0);
+	CGD_ASSERT(ss != 0);
 
 #ifdef USING_CHAIN_SMART_LIST
-	LPG_ASSERT(ss->current != 0);
+	CGD_ASSERT(ss->current != 0);
 	while (*(ss->current)) {
-		LPG_ASSERT(ss->index < (*(ss->current))->size);
+		CGD_ASSERT(ss->index < (*(ss->current))->size);
 		if ((*(ss->current))->list[ss->index])
 			return True;
 
@@ -683,15 +712,15 @@ Bool seek_until_valid(SmartSeek* ss) {
 	return False;
 }
 
-Bool LPG_(smart_list_has_next)(SmartSeek* ss) {
+Bool CGD_(smart_list_has_next)(SmartSeek* ss) {
 	return seek_until_valid(ss);
 }
 
-void LPG_(smart_list_next)(SmartSeek* ss) {
-	LPG_ASSERT(ss != 0);
+void CGD_(smart_list_next)(SmartSeek* ss) {
+	CGD_ASSERT(ss != 0);
 
 #ifdef USING_CHAIN_SMART_LIST
-	LPG_ASSERT(ss->current != 0);
+	CGD_ASSERT(ss->current != 0);
 	if (*(ss->current) && ss->index < (*(ss->current))->size) {
 		ss->index++;
 		if (ss->index == (*(ss->current))->size) {
@@ -707,11 +736,11 @@ void LPG_(smart_list_next)(SmartSeek* ss) {
 	seek_until_valid(ss);
 }
 
-void* LPG_(smart_list_get_value)(SmartSeek* ss) {
-	LPG_ASSERT(ss != 0);
+void* CGD_(smart_list_get_value)(SmartSeek* ss) {
+	CGD_ASSERT(ss != 0);
 
 #ifdef USING_CHAIN_SMART_LIST
-	LPG_ASSERT(ss->current != 0);
+	CGD_ASSERT(ss->current != 0);
 	if (*(ss->current) && ss->index < (*(ss->current))->size)
 		return (*(ss->current))->list[ss->index];
 #else
@@ -722,11 +751,11 @@ void* LPG_(smart_list_get_value)(SmartSeek* ss) {
 	return 0;
 }
 
-void LPG_(smart_list_set_value)(SmartSeek* ss, void* value) {
-	LPG_ASSERT(ss != 0);
+void CGD_(smart_list_set_value)(SmartSeek* ss, void* value) {
+	CGD_ASSERT(ss != 0);
 
 #ifdef USING_CHAIN_SMART_LIST
-	LPG_ASSERT(ss->current != 0);
+	CGD_ASSERT(ss->current != 0);
 	if (*(ss->current) && ss->index < (*(ss->current))->size) {
 		if ((*(ss->current))->list[ss->index])
 			ss->slist->elements--;

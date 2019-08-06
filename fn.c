@@ -1,11 +1,15 @@
 /*--------------------------------------------------------------------*/
-/*--- Callgrind                                                    ---*/
-/*---                                                      ct_fn.c ---*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                         fn.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Callgrind, a Valgrind tool for call tracing.
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
 
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This tool is derived from and contains lot of code from Callgrind
    Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
@@ -53,9 +57,9 @@ static Bool check_code(obj_node* obj,
 
     /* first chunk of pattern should always start at offset 0 and
      * have at least 3 bytes */
-    LPG_ASSERT((pat->chunk[0].start == 0) && (pat->chunk[0].len >2));
+    CGD_ASSERT((pat->chunk[0].start == 0) && (pat->chunk[0].len >2));
     
-    LPG_DEBUG(1, "check_code: %s, pattern %s, check %d bytes of [%x %x %x...]\n",
+    CGD_DEBUG(1, "check_code: %s, pattern %s, check %d bytes of [%x %x %x...]\n",
               obj->name, pat->name, pat->chunk[0].len, code[0], code[1], code[2]);
 
     end = obj->start + obj->size - pat->len;
@@ -70,8 +74,8 @@ static Bool check_code(obj_node* obj,
 		len   = pat->chunk[chunk].len;
 		if (len == 0) break;
 
-		LPG_ASSERT(len >2);
-                LPG_DEBUG(1, " found chunk %d at %#lx, checking %d bytes "
+		CGD_ASSERT(len >2);
+                CGD_DEBUG(1, " found chunk %d at %#lx, checking %d bytes "
                              "of [%x %x %x...]\n",
                           chunk-1, addr - obj->start, len,
 			  code[start], code[start+1], code[start+2]);
@@ -84,7 +88,7 @@ static Bool check_code(obj_node* obj,
 	    }
 
             if (found) {
-		LPG_DEBUG(1, "found at offset %#lx.\n", addr - obj->start);
+		CGD_DEBUG(1, "found at offset %#lx.\n", addr - obj->start);
 		if (VG_(clo_verbosity) > 1)
 		    VG_(message)(Vg_DebugMsg, "Found runtime_resolve (%s): "
                                               "%s +%#lx=%#lx, length %d\n",
@@ -98,14 +102,14 @@ static Bool check_code(obj_node* obj,
         }
         addr++;
     }
-    LPG_DEBUG(1, " found nothing.\n");
+    CGD_DEBUG(1, " found nothing.\n");
     return False;
 }
 
 
 /* _ld_runtime_resolve, located in ld.so, needs special handling:
  * The jump at end into the resolved function should not be
- * represented as a call (as usually done in callgrind with jumps),
+ * represented as a call (as usually done in CFGgrind with jumps),
  * but as a return + call. Otherwise, the repeated existence of
  * _ld_runtime_resolve in call chains will lead to huge cycles,
  * making the profile almost worthless.
@@ -201,7 +205,7 @@ static Bool search_runtime_resolve(obj_node* obj)
 /* Object hash table, fixed */
 static obj_node* obj_table[N_OBJ_ENTRIES];
 
-void LPG_(init_obj_table)() {
+void CGD_(init_obj_table)() {
 	Int i;
 	for (i = 0; i < N_OBJ_ENTRIES; i++)
 		obj_table[i] = 0;
@@ -209,19 +213,19 @@ void LPG_(init_obj_table)() {
 
 static
 void delete_fn_node(fn_node* fn_n) {
-	LPG_ASSERT(fn_n != 0);
+	CGD_ASSERT(fn_n != 0);
 
-	LPG_FREE(fn_n->name);
-	LPG_DATA_FREE(fn_n, sizeof(fn_node));
+	CGD_FREE(fn_n->name);
+	CGD_DATA_FREE(fn_n, sizeof(fn_node));
 }
 
 static
 void delete_file_node(file_node* f_n) {
 	Int j;
 
-	LPG_ASSERT(f_n != 0);
+	CGD_ASSERT(f_n != 0);
 
-	LPG_FREE(f_n->name);
+	CGD_FREE(f_n->name);
 	for (j = 0; j < N_FN_ENTRIES; j++) {
 		fn_node* fn_n = f_n->fns[j];
 		while (fn_n) {
@@ -231,17 +235,17 @@ void delete_file_node(file_node* f_n) {
 		}
 	}
 
-	LPG_DATA_FREE(f_n, sizeof(file_node));
+	CGD_DATA_FREE(f_n, sizeof(file_node));
 }
 
 static
 void delete_obj_node(obj_node* obj) {
 	Int i;
 
-	LPG_ASSERT(obj != 0);
-	LPG_ASSERT(obj->name != 0);
+	CGD_ASSERT(obj != 0);
+	CGD_ASSERT(obj->name != 0);
 
-	LPG_FREE(obj->name);
+	CGD_FREE(obj->name);
 	for (i = 0; i < N_FILE_ENTRIES; i++) {
 		file_node* f_n = obj->files[i];
 		while (f_n) {
@@ -251,10 +255,10 @@ void delete_obj_node(obj_node* obj) {
 		}
 	}
 
-	LPG_DATA_FREE(obj, sizeof(obj_node));
+	CGD_DATA_FREE(obj, sizeof(obj_node));
 }
 
-void LPG_(destroy_obj_table)() {
+void CGD_(destroy_obj_table)() {
 	Int i;
 
 	for (i = 0; i < N_OBJ_ENTRIES; i++) {
@@ -288,15 +292,15 @@ obj_node* new_obj_node(DebugInfo* di, obj_node* next)
    Int i;
    obj_node* obj;
 
-   obj = (obj_node*) LPG_MALLOC("cl.fn.non.1", sizeof(obj_node));
-   obj->name  = LPG_STRDUP("cl.fn.non.2",
+   obj = (obj_node*) CGD_MALLOC("cgd.fn.non.1", sizeof(obj_node));
+   obj->name  = CGD_STRDUP("cgd.fn.non.2",
 		   	   	   di ? VG_(DebugInfo_get_filename)(di) : anonymous_obj);
 
    for (i = 0; i < N_FILE_ENTRIES; i++) {
       obj->files[i] = NULL;
    }
-   LPG_(stat).distinct_objs ++;
-   obj->number  = LPG_(stat).distinct_objs;
+   CGD_(stat).distinct_objs ++;
+   obj->number  = CGD_(stat).distinct_objs;
    /* JRS 2008 Feb 19: maybe rename .start/.size/.offset to
       .text_avma/.text_size/.test_bias to make it clearer what these
       fields really mean */
@@ -318,7 +322,7 @@ obj_node* new_obj_node(DebugInfo* di, obj_node* next)
    return obj;
 }
 
-obj_node* LPG_(get_obj_node)(DebugInfo* di)
+obj_node* CGD_(get_obj_node)(DebugInfo* di)
 {
     obj_node*    curr_obj_node;
     UInt         objname_hash;
@@ -347,21 +351,21 @@ file_node* new_file_node(const HChar *filename,
 			 obj_node* obj, file_node* next)
 {
   Int i;
-  file_node* file = (file_node*) LPG_MALLOC("cl.fn.nfn.1",
+  file_node* file = (file_node*) CGD_MALLOC("cgd.fn.nfn.1",
                                            sizeof(file_node));
-  file->name  = LPG_STRDUP("cl.fn.nfn.2", filename);
+  file->name  = CGD_STRDUP("cgd.fn.nfn.2", filename);
   for (i = 0; i < N_FN_ENTRIES; i++) {
     file->fns[i] = NULL;
   }
-  LPG_(stat).distinct_files++;
-  file->number  = LPG_(stat).distinct_files;
+  CGD_(stat).distinct_files++;
+  file->number  = CGD_(stat).distinct_files;
   file->obj     = obj;
   file->next      = next;
   return file;
 }
 
  
-file_node* LPG_(get_file_node)(obj_node* curr_obj_node,
+file_node* CGD_(get_file_node)(obj_node* curr_obj_node,
                                const HChar *dir, const HChar *file)
 {
     file_node* curr_file_node;
@@ -396,12 +400,12 @@ static __inline__
 fn_node* new_fn_node(const HChar *fnname,
 		     file_node* file, fn_node* next)
 {
-    fn_node* fn = (fn_node*) LPG_MALLOC("cl.fn.nfnnd.1",
+    fn_node* fn = (fn_node*) CGD_MALLOC("cgd.fn.nfnnd.1",
                                          sizeof(fn_node));
-    fn->name = LPG_STRDUP("cl.fn.nfnnd.2", fnname);
+    fn->name = CGD_STRDUP("cgd.fn.nfnnd.2", fnname);
 
-    LPG_(stat).distinct_fns++;
-    fn->number   = LPG_(stat).distinct_fns;
+    CGD_(stat).distinct_fns++;
+    fn->number   = CGD_(stat).distinct_fns;
     fn->visited  = False;
     fn->file     = file;
     fn->next     = next;
@@ -410,7 +414,7 @@ fn_node* new_fn_node(const HChar *fnname,
     fn->is_realloc   = False;
     fn->is_free      = False;
 
-#if LPG_ENABLE_DEBUG
+#if CGD_ENABLE_DEBUG
     fn->verbosity    = -1;
 #endif
 
@@ -428,7 +432,7 @@ fn_node* get_fn_node_infile(file_node* curr_file_node,
     fn_node* curr_fn_node;
     UInt     fnname_hash;
 
-    LPG_ASSERT(curr_file_node != 0);
+    CGD_ASSERT(curr_file_node != 0);
 
     /* lookup in function hash */
     fnname_hash = str_hash(fnname, N_FN_ENTRIES);
@@ -456,15 +460,15 @@ fn_node* get_fn_node_inseg(DebugInfo* di,
 			   const HChar *filename,
 			   const HChar *fnname)
 {
-  obj_node  *obj  = LPG_(get_obj_node)(di);
-  file_node *file = LPG_(get_file_node)(obj, dirname, filename);
+  obj_node  *obj  = CGD_(get_obj_node)(di);
+  file_node *file = CGD_(get_file_node)(obj, dirname, filename);
   fn_node   *fn   = get_fn_node_infile(file, fnname);
 
   return fn;
 }
 
 
-Bool LPG_(get_debug_info)(Addr instr_addr,
+Bool CGD_(get_debug_info)(Addr instr_addr,
                           const HChar **dir,
                           const HChar **file,
                           const HChar **fn_name, UInt* line_num,
@@ -473,7 +477,7 @@ Bool LPG_(get_debug_info)(Addr instr_addr,
   Bool found_file_line, found_fn, result = True;
   UInt line;
   
-  LPG_DEBUG(6, "  + get_debug_info(%#lx)\n", instr_addr);
+  CGD_DEBUG(6, "  + get_debug_info(%#lx)\n", instr_addr);
 
   DiEpoch ep = VG_(current_DiEpoch)();
   if (pDebugInfo) {
@@ -489,28 +493,28 @@ Bool LPG_(get_debug_info)(Addr instr_addr,
    found_fn = VG_(get_fnname)(ep, instr_addr, fn_name);
 
    if (!found_file_line && !found_fn) {
-     LPG_(stat).no_debug_BBs++;
+     CGD_(stat).no_debug_BBs++;
      *file = "???";
      *fn_name = "???";
      if (line_num) *line_num=0;
      result = False;
 
    } else if ( found_file_line &&  found_fn) {
-     LPG_(stat).full_debug_BBs++;
+     CGD_(stat).full_debug_BBs++;
      if (line_num) *line_num=line;
 
    } else if ( found_file_line && !found_fn) {
-     LPG_(stat).file_line_debug_BBs++;
+     CGD_(stat).file_line_debug_BBs++;
      *fn_name = "???";
      if (line_num) *line_num=line;
 
    } else  /*(!found_file_line &&  found_fn)*/ {
-     LPG_(stat).fn_name_debug_BBs++;
+     CGD_(stat).fn_name_debug_BBs++;
      *file = "???";
      if (line_num) *line_num=0;
    }
 
-   LPG_DEBUG(6, "  - get_debug_info(%#lx): seg '%s', fn %s\n",
+   CGD_DEBUG(6, "  - get_debug_info(%#lx): seg '%s', fn %s\n",
 	    instr_addr,
 	    !pDebugInfo   ? "-" :
 	    (*pDebugInfo) ? VG_(DebugInfo_get_filename)(*pDebugInfo) :
@@ -527,7 +531,7 @@ static BB* exit_bb = 0;
 /*
  * Attach function struct to a BB from debug info.
  */
-fn_node* LPG_(get_fn_node)(BB* bb)
+fn_node* CGD_(get_fn_node)(BB* bb)
 {
     const HChar *fnname, *filename, *dirname;
     DebugInfo* di;
@@ -537,12 +541,12 @@ fn_node* LPG_(get_fn_node)(BB* bb)
     /* fn from debug info is idempotent for a BB */
     if (bb->fn) return bb->fn;
 
-    LPG_DEBUG(3,"+ get_fn_node(BB %#lx)\n", bb_addr(bb));
+    CGD_DEBUG(3,"+ get_fn_node(BB %#lx)\n", bb_addr(bb));
 
     /* get function/file name, line number and object of
      * the BB according to debug information
      */
-    LPG_(get_debug_info)(bb_addr(bb),
+    CGD_(get_debug_info)(bb_addr(bb),
                          &dirname, &filename, &fnname, &line_num, &di);
 
     DiEpoch ep = VG_(current_DiEpoch)();
@@ -574,10 +578,10 @@ fn_node* LPG_(get_fn_node)(BB* bb)
      */
     if (0 == VG_(strcmp)(fnname, "vgPlain___libc_freeres_wrapper")
 	&& exit_bb) {
-      LPG_(get_debug_info)(bb_addr(exit_bb),
+      CGD_(get_debug_info)(bb_addr(exit_bb),
                            &dirname, &filename, &fnname, &line_num, &di);
 	
-	LPG_DEBUG(1, "__libc_freeres_wrapper renamed to _exit\n");
+	CGD_DEBUG(1, "__libc_freeres_wrapper renamed to _exit\n");
     }
     if (0 == VG_(strcmp)(fnname, "_exit") && !exit_bb)
 	exit_bb = bb;
@@ -606,10 +610,10 @@ fn_node* LPG_(get_fn_node)(BB* bb)
     bb->line = line_num;
 
     if (dirname[0]) {
-       LPG_DEBUG(3,"- get_fn_node(BB %#lx): %s (in %s:%u)\n",
+       CGD_DEBUG(3,"- get_fn_node(BB %#lx): %s (in %s:%u)\n",
                  bb_addr(bb), fnname, filename, line_num);
     } else
-       LPG_DEBUG(3,"- get_fn_node(BB %#lx): %s (in %s/%s:%u)\n",
+       CGD_DEBUG(3,"- get_fn_node(BB %#lx): %s (in %s/%s:%u)\n",
                  bb_addr(bb), fnname, dirname, filename, line_num);
 
     return fn;

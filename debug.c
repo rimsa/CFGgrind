@@ -1,11 +1,16 @@
+/*--------------------------------------------------------------------*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                      debug.c ---*/
+/*--------------------------------------------------------------------*/
+
 /*
-   This file is part of Callgrind, a Valgrind tool for call graph
-   profiling programs.
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
 
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This tool is derived from and contains lot of code from Callgrind
    Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
-
-   This tool is derived from and contains lot of code from Cachegrind
-   Copyright (C) 2002-2017 Nicholas Nethercote (njn@valgrind.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -29,7 +34,7 @@
 
 /* If debugging mode of, dummy functions are provided (see below)
  */
-#if LPG_ENABLE_DEBUG
+#if CGD_ENABLE_DEBUG
 
 /*------------------------------------------------------------*/
 /*--- Debug output helpers                                 ---*/
@@ -43,7 +48,7 @@ static void print_indent(int s)
     VG_(printf)("%s", sp+40-s);
 }
 
-void LPG_(print_bb)(int s, BB* bb)
+void CGD_(print_bb)(int s, BB* bb)
 {
     if (s<0) {
 	s = -s;
@@ -53,7 +58,7 @@ void LPG_(print_bb)(int s, BB* bb)
     VG_(printf)("BB %#lx (Obj '%s')", bb_addr(bb), bb->obj->name);
 }
 
-void LPG_(print_execstate)(int s, exec_state* es)
+void CGD_(print_execstate)(int s, exec_state* es)
 {
   if (s<0) {
     s = -s;
@@ -70,7 +75,7 @@ void LPG_(print_execstate)(int s, exec_state* es)
 }
 
 /* dump out the current call stack */
-void LPG_(print_stackentry)(int s, int sp)
+void CGD_(print_stackentry)(int s, int sp)
 {
     call_entry* ce;
 
@@ -79,7 +84,7 @@ void LPG_(print_stackentry)(int s, int sp)
 	print_indent(s);
     }
 
-    ce = LPG_(get_call_entry)(sp);
+    ce = CGD_(get_call_entry)(sp);
     VG_(printf)("[%-2d] SP %#lx, RA %#lx\n", sp, ce->sp, ce->ret_addr);
 }
 
@@ -90,13 +95,13 @@ static void print_call_stack()
     int c;
 
     VG_(printf)("Call Stack:\n");
-    for(c=0;c<LPG_(current_call_stack).sp;c++)
-      LPG_(print_stackentry)(-2, c);
+    for(c=0;c<CGD_(current_call_stack).sp;c++)
+      CGD_(print_stackentry)(-2, c);
 }
 #endif
 
 /* dump out an address with source info if available */
-void LPG_(print_addr)(Addr addr)
+void CGD_(print_addr)(Addr addr)
 {
     const HChar *fn_buf, *fl_buf, *dir_buf;
     const HChar* obj_name;
@@ -108,7 +113,7 @@ void LPG_(print_addr)(Addr addr)
 	return;
     }
 
-    LPG_(get_debug_info)(addr, &dir_buf, &fl_buf, &fn_buf, &ln, &di);
+    CGD_(get_debug_info)(addr, &dir_buf, &fl_buf, &fn_buf, &ln, &di);
 
     if (VG_(strcmp)(fn_buf,"???")==0)
 	VG_(printf)("%#lx", addr);
@@ -135,69 +140,69 @@ void LPG_(print_addr)(Addr addr)
     }
 }
 
-void LPG_(print_addr_ln)(Addr addr)
+void CGD_(print_addr_ln)(Addr addr)
 {
-  LPG_(print_addr)(addr);
+  CGD_(print_addr)(addr);
   VG_(printf)("\n");
 }
 
 static ULong bb_written = 0;
 
-void LPG_(print_bbno)(void)
+void CGD_(print_bbno)(void)
 {
-  if (bb_written != LPG_(stat).bb_executions) {
-    bb_written = LPG_(stat).bb_executions;
-    VG_(printf)("BB# %llu\n",LPG_(stat).bb_executions);
+  if (bb_written != CGD_(stat).bb_executions) {
+    bb_written = CGD_(stat).bb_executions;
+    VG_(printf)("BB# %llu\n",CGD_(stat).bb_executions);
   }
 }
 
-#if LPG_DEBUG_MEM
-void* LPG_(malloc)(const HChar* cc, UWord s, const HChar* f) {
+#if CGD_DEBUG_MEM
+void* CGD_(malloc)(const HChar* cc, UWord s, const HChar* f) {
 	void* p;
 
-	LPG_UNUSED(cc);
+	CGD_UNUSED(cc);
 
-	LPG_DEBUG(3, "Malloc(%lu) in %s: ", s, f);
+	CGD_DEBUG(3, "Malloc(%lu) in %s: ", s, f);
 	p = VG_(malloc)(cc, s);
-	LPG_DEBUG(3, "%p\n", p);
+	CGD_DEBUG(3, "%p\n", p);
 	return p;
 }
 
-void* LPG_(realloc)(const HChar* cc, void* p, UWord s, const HChar* f) {
-	LPG_UNUSED(cc);
+void* CGD_(realloc)(const HChar* cc, void* p, UWord s, const HChar* f) {
+	CGD_UNUSED(cc);
 
 	if (p != 0)
-		LPG_DEBUG(3, "Free in %s: %p\n", f, p);
+		CGD_DEBUG(3, "Free in %s: %p\n", f, p);
 
-	LPG_DEBUG(3, "Malloc(%lu) in %s: ", s, f);
+	CGD_DEBUG(3, "Malloc(%lu) in %s: ", s, f);
 	p = VG_(realloc)(cc, p, s);
-	LPG_DEBUG(3, "%p\n", p);
+	CGD_DEBUG(3, "%p\n", p);
 	return p;
 }
 
-void LPG_(free)(void* p, const HChar* f) {
-	LPG_DEBUG(3, "Free in %s: %p\n", f, p);
+void CGD_(free)(void* p, const HChar* f) {
+	CGD_DEBUG(3, "Free in %s: %p\n", f, p);
 	VG_(free)(p);
 }
 
-HChar* LPG_(strdup)(const HChar* cc, const HChar* s, const HChar* f) {
+HChar* CGD_(strdup)(const HChar* cc, const HChar* s, const HChar* f) {
 	HChar* p;
 
-	LPG_UNUSED(cc);
+	CGD_UNUSED(cc);
 
-	LPG_DEBUG(3, "Strdup(%s) in %s: ", s, f);
+	CGD_DEBUG(3, "Strdup(%s) in %s: ", s, f);
 	p = VG_(strdup)(cc, s);
-	LPG_DEBUG(3, "%p\n", p);
+	CGD_DEBUG(3, "%p\n", p);
 	return p;
 }
 #endif
 
-#else /* LPG_ENABLE_DEBUG */
+#else /* CGD_ENABLE_DEBUG */
 
-void LPG_(print_bbno)(void) {}
-void LPG_(print_bb)(int s, BB* bb) {}
-void LPG_(print_stackentry)(int s, int sp) {}
-void LPG_(print_addr)(Addr addr) {}
-void LPG_(print_addr_ln)(Addr addr) {}
+void CGD_(print_bbno)(void) {}
+void CGD_(print_bb)(int s, BB* bb) {}
+void CGD_(print_stackentry)(int s, int sp) {}
+void CGD_(print_addr)(Addr addr) {}
+void CGD_(print_addr_ln)(Addr addr) {}
 
 #endif

@@ -1,13 +1,16 @@
 /*--------------------------------------------------------------------*/
-/*--- Callgrind data structures, functions.               global.h ---*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                     global.h ---*/
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Valgrind, a dynamic binary instrumentation
-   framework.
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
 
-   Copyright (C) 2004-2017 Josef Weidendorfer
-      josef.weidendorfer@gmx.de
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This tool is derived from and contains lot of code from Callgrind
+   Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -27,8 +30,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#ifndef LPG_GLOBAL
-#define LPG_GLOBAL
+#ifndef CGD_GLOBAL
+#define CGD_GLOBAL
 
 #include "pub_tool_basics.h"
 #include "pub_tool_vki.h"
@@ -47,19 +50,19 @@
 #include "pub_tool_machine.h"      // VG_(fnptr_to_fnentry)
 
 
-#define LPG_(str) VGAPPEND(vgcfggrind_,str)
+#define CGD_(str) VGAPPEND(vgCFGgrind_,str)
 
 /*------------------------------------------------------------*/
 /*--- Callgrind compile options                           --- */
 /*------------------------------------------------------------*/
 
 /* Enable debug output */
-#define LPG_ENABLE_DEBUG	1
-#define LPG_DEBUG_MEM	0
+#define CGD_ENABLE_DEBUG	1
+#define CGD_DEBUG_MEM	0
 
 /* Syscall Timing in microseconds? 
  * (define to 0 if you get compile errors) */
-#define LPG_MICROSYSTIME 0
+#define CGD_MICROSYSTIME 0
 
 // CFG node cache size. Use 0 to disable.
 #define CFG_NODE_CACHE_SIZE 8
@@ -92,7 +95,7 @@ struct _CommandLineOptions {
   } dump_cfgs;
   const HChar* instrs_map;  /* Instructions map file */
 
-#if LPG_ENABLE_DEBUG
+#if CGD_ENABLE_DEBUG
   Int   verbose;
   ULong verbose_start;
 #endif
@@ -149,11 +152,11 @@ typedef struct _SmartSeek			SmartSeek;
  * execution of two BBs in a thread.
  */
 typedef enum {
-  jk_None = 0,   /* no explicit change by a guest instruction */
-  jk_Jump,       /* regular jump */
-  jk_Call,
-  jk_Return,
-} LpgJumpKind;
+  bjk_None = 0,   /* no explicit change by a guest instruction */
+  bjk_Jump,       /* regular jump */
+  bjk_Call,
+  bjk_Return,
+} BBJumpKind;
 
 typedef struct _InstrDesc InstrDesc;
 struct _InstrDesc {
@@ -197,7 +200,7 @@ typedef struct _CJmpInfo CJmpInfo;
 struct _CJmpInfo {
 	UInt instr;          /* instruction index for BB.instr array */
 	UInt group;          /* group index for BB.groups array */
-	LpgJumpKind jmpkind; /* jump kind when leaving BB at this side exit */
+	BBJumpKind jmpkind; /* jump kind when leaving BB at this side exit */
 	Addr dst;            /* Destination addr (nil if call or ret) */
 	Bool indirect;       /* Mark if it is an indirect jump */
 };
@@ -222,12 +225,12 @@ struct _BB {
   VgSectKind sect_kind;  /* section of this BB, e.g. PLT */
   UInt       instr_count;
   
-  /* filled by LPG_(get_fn_node) if debug info is available */
+  /* filled by CGD_(get_fn_node) if debug info is available */
   fn_node*   fn;          /* debug info for this BB */
   UInt       line;
   Bool       is_entry;    /* True if this BB is a function entry */
 
-  /* filled by LPG_(instrument) if not seen before */
+  /* filled by CGD_(instrument) if not seen before */
   UInt       cjmp_count;  /* number of side exits */
   CJmpInfo*  jmp;         /* array of info for condition jumps,
 			   * allocated directly after this struct */
@@ -254,7 +257,7 @@ struct _fn_node {
   Bool is_realloc :1;
   Bool is_free :1;
 
-#if LPG_ENABLE_DEBUG
+#if CGD_ENABLE_DEBUG
   Int  verbosity; /* Stores old verbosity level while in function */
 #endif
 };
@@ -468,12 +471,12 @@ struct _thread_info {
 /*------------------------------------------------------------*/
 
 /* from bb.c */
-void LPG_(init_bb_hash)(void);
-void LPG_(destroy_bb_hash)(void);
-bb_hash* LPG_(get_bb_hash)(void);
-BB*  LPG_(get_bb)(Addr addr, IRSB* bb_in, Bool *seen_before);
-void LPG_(delete_bb)(Addr addr);
-void LPG_(setup_bb)(BB* bb) VG_REGPARM(1);
+void CGD_(init_bb_hash)(void);
+void CGD_(destroy_bb_hash)(void);
+bb_hash* CGD_(get_bb_hash)(void);
+BB*  CGD_(get_bb)(Addr addr, IRSB* bb_in, Bool *seen_before);
+void CGD_(delete_bb)(Addr addr);
+void CGD_(setup_bb)(BB* bb) VG_REGPARM(1);
 
 static __inline__ Addr bb_addr(BB* bb)
  { return bb->offset + bb->obj->offset; }
@@ -482,251 +485,251 @@ static __inline__ Addr bb_jmpaddr(BB* bb)
    return off + bb->offset + bb->obj->offset; }
 
 /* from cfg.c */
-void LPG_(init_cfg_hash)(void);
-void LPG_(destroy_cfg_hash)(void);
-CFG* LPG_(get_cfg)(Addr addr);
-Addr LPG_(cfg_addr)(CFG* cfg);
-FunctionDesc* LPG_(cfg_fdesc)(CFG* cfg);
-void LPG_(cfg_build_fdesc)(CFG* cfg);
-Bool LPG_(cfg_is_inside_main)(CFG* cfg);
-void LPG_(cfg_set_inside_main)(CFG* cfg, Bool inside_main);
-Bool LPG_(cfg_is_dirty)(CFG* cfg);
-Bool LPG_(cfg_is_visited)(CFG* cfg);
-void LPG_(cfg_set_visited)(CFG* cfg, Bool visited);
-Bool LPG_(cfg_is_complete)(CFG* cfg);
-CfgNode* LPG_(cfg_entry_node)(CFG* cfg);
-CfgNode* LPG_(cfg_exit_node)(CFG* cfg);
-CfgNode* LPG_(cfg_halt_node)(CFG* cfg);
-SmartList* LPG_(cfg_nodes)(CFG* cfg);
-Bool LPG_(cfg_cmp)(CFG* cfg1, CFG* cfg2);
-Int LPG_(cfgnode_id)(CfgNode* node);
-enum CfgNodeType LPG_(cfgnode_type)(CfgNode* node);
-const HChar* LPG_(cfgnode_type2str)(enum CfgNodeType type, Bool lowercase);
-Addr LPG_(cfgnode_addr)(CfgNode* node);
-Addr LPG_(cfgnode_size)(CfgNode* node);
-SmartList* LPG_(cfgnode_successors)(CfgNode* node);
-SmartList* LPG_(cfgnode_predecessors)(CfgNode* node);
-Bool LPG_(cfgnode_is_visited)(CfgNode* node);
-void LPG_(cfgnode_set_visited)(CfgNode* node, Bool visited);
-Bool LPG_(cfgnode_is_indirect)(CfgNode* node);
-Bool LPG_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr);
-Bool LPG_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr);
-void LPG_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr);
-Bool LPG_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2);
-CfgNode* LPG_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_offset);
-void LPG_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
-		LpgJumpKind jmpkind, Bool indirect);
-void LPG_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirect);
-CfgNode* LPG_(cfgnode_set_exit)(CFG* cfg, CfgNode* dangling);
-CfgNode* LPG_(cfgnode_set_halt)(CFG* cfg, CfgNode* dangling);
-void LPG_(clean_visited_cfgnodes)(CFG* cfg);
-void LPG_(check_cfg)(CFG* cfg);
-void LPG_(fprint_cfg)(VgFile* out, CFG* cfg);
-void LPG_(fprint_detailed_cfg)(VgFile* out, CFG* cfg);
-void LPG_(write_cfgs)(VgFile* out_fp);
-void LPG_(read_cfgs)(Int fd);
-void LPG_(dump_cfg)(CFG* cfg);
-void LPG_(forall_cfg)(void (*func)(CFG*), Bool all);
-void LPG_(clear_visited)(CFG* cfg);
+void CGD_(init_cfg_hash)(void);
+void CGD_(destroy_cfg_hash)(void);
+CFG* CGD_(get_cfg)(Addr addr);
+Addr CGD_(cfg_addr)(CFG* cfg);
+FunctionDesc* CGD_(cfg_fdesc)(CFG* cfg);
+void CGD_(cfg_build_fdesc)(CFG* cfg);
+Bool CGD_(cfg_is_inside_main)(CFG* cfg);
+void CGD_(cfg_set_inside_main)(CFG* cfg, Bool inside_main);
+Bool CGD_(cfg_is_dirty)(CFG* cfg);
+Bool CGD_(cfg_is_visited)(CFG* cfg);
+void CGD_(cfg_set_visited)(CFG* cfg, Bool visited);
+Bool CGD_(cfg_is_complete)(CFG* cfg);
+CfgNode* CGD_(cfg_entry_node)(CFG* cfg);
+CfgNode* CGD_(cfg_exit_node)(CFG* cfg);
+CfgNode* CGD_(cfg_halt_node)(CFG* cfg);
+SmartList* CGD_(cfg_nodes)(CFG* cfg);
+Bool CGD_(cfg_cmp)(CFG* cfg1, CFG* cfg2);
+Int CGD_(cfgnode_id)(CfgNode* node);
+enum CfgNodeType CGD_(cfgnode_type)(CfgNode* node);
+const HChar* CGD_(cfgnode_type2str)(enum CfgNodeType type, Bool lowercase);
+Addr CGD_(cfgnode_addr)(CfgNode* node);
+Addr CGD_(cfgnode_size)(CfgNode* node);
+SmartList* CGD_(cfgnode_successors)(CfgNode* node);
+SmartList* CGD_(cfgnode_predecessors)(CfgNode* node);
+Bool CGD_(cfgnode_is_visited)(CfgNode* node);
+void CGD_(cfgnode_set_visited)(CfgNode* node, Bool visited);
+Bool CGD_(cfgnode_is_indirect)(CfgNode* node);
+Bool CGD_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr);
+Bool CGD_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr);
+void CGD_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr);
+Bool CGD_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2);
+CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_offset);
+void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
+		BBJumpKind jmpkind, Bool indirect);
+void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirect);
+CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* dangling);
+CfgNode* CGD_(cfgnode_set_halt)(CFG* cfg, CfgNode* dangling);
+void CGD_(clean_visited_cfgnodes)(CFG* cfg);
+void CGD_(check_cfg)(CFG* cfg);
+void CGD_(fprint_cfg)(VgFile* out, CFG* cfg);
+void CGD_(fprint_detailed_cfg)(VgFile* out, CFG* cfg);
+void CGD_(write_cfgs)(VgFile* out_fp);
+void CGD_(read_cfgs)(Int fd);
+void CGD_(dump_cfg)(CFG* cfg);
+void CGD_(forall_cfg)(void (*func)(CFG*), Bool all);
+void CGD_(clear_visited)(CFG* cfg);
 
 /* from clo.c */
-void LPG_(set_clo_defaults)(void);
-Bool LPG_(process_cmd_line_option)(const HChar*);
-void LPG_(print_usage)(void);
-void LPG_(print_debug_usage)(void);
+void CGD_(set_clo_defaults)(void);
+Bool CGD_(process_cmd_line_option)(const HChar*);
+void CGD_(print_usage)(void);
+void CGD_(print_debug_usage)(void);
 
 /* from fdesc.c */
-FunctionDesc* LPG_(new_fdesc)(Addr addr, Bool entry);
-void LPG_(delete_fdesc)(FunctionDesc* fdesc);
-HChar* LPG_(fdesc_object_name)(FunctionDesc* fdesc);
-HChar* LPG_(fdesc_function_name)(FunctionDesc* fdesc);
-UInt LPG_(fdesc_function_line)(FunctionDesc* fdesc);
-void LPG_(print_fdesc)(FunctionDesc* fdesc);
-void LPG_(fprint_fdesc)(VgFile* fp, FunctionDesc* fdesc);
-HChar* LPG_(fdesc2str)(FunctionDesc* fdesc);
-FunctionDesc* LPG_(str2fdesc)(const HChar* str);
-Bool LPG_(is_main_function)(FunctionDesc* fdesc);
-Bool LPG_(compare_functions_desc)(FunctionDesc* fdesc1, FunctionDesc* fdesc2);
+FunctionDesc* CGD_(new_fdesc)(Addr addr, Bool entry);
+void CGD_(delete_fdesc)(FunctionDesc* fdesc);
+HChar* CGD_(fdesc_object_name)(FunctionDesc* fdesc);
+HChar* CGD_(fdesc_function_name)(FunctionDesc* fdesc);
+UInt CGD_(fdesc_function_line)(FunctionDesc* fdesc);
+void CGD_(print_fdesc)(FunctionDesc* fdesc);
+void CGD_(fprint_fdesc)(VgFile* fp, FunctionDesc* fdesc);
+HChar* CGD_(fdesc2str)(FunctionDesc* fdesc);
+FunctionDesc* CGD_(str2fdesc)(const HChar* str);
+Bool CGD_(is_main_function)(FunctionDesc* fdesc);
+Bool CGD_(compare_functions_desc)(FunctionDesc* fdesc1, FunctionDesc* fdesc2);
 
 /* from fn.c */
-void LPG_(init_obj_table)(void);
-void LPG_(destroy_obj_table)(void);
-obj_node* LPG_(get_obj_node)(DebugInfo* si);
-file_node* LPG_(get_file_node)(obj_node*, const HChar *dirname,
+void CGD_(init_obj_table)(void);
+void CGD_(destroy_obj_table)(void);
+obj_node* CGD_(get_obj_node)(DebugInfo* si);
+file_node* CGD_(get_file_node)(obj_node*, const HChar *dirname,
                                const HChar* filename);
-fn_node*  LPG_(get_fn_node)(BB* bb);
+fn_node*  CGD_(get_fn_node)(BB* bb);
 
 /* from main.c */
-Bool LPG_(get_debug_info)(Addr, const HChar **dirname,
+Bool CGD_(get_debug_info)(Addr, const HChar **dirname,
                           const HChar **filename,
                           const HChar **fn_name, UInt*, DebugInfo**);
-void LPG_(collectBlockInfo)(IRSB* bbIn, UInt*, UInt*, Bool*, UInt *);
-void LPG_(fini)(Int exitcode);
+void CGD_(collectBlockInfo)(IRSB* bbIn, UInt*, UInt*, Bool*, UInt *);
+void CGD_(fini)(Int exitcode);
 
 /* from smarthash.c */
-SmartHash* LPG_(new_smart_hash)(Int size);
-SmartHash* LPG_(new_fixed_smart_hash)(Int size);
-void LPG_(delete_smart_hash)(SmartHash* shash);
-void LPG_(smart_hash_clear)(SmartHash* shash, void (*remove_value)(void*));
-Int LPG_(smart_hash_count)(SmartHash* shash);
-Int LPG_(smart_hash_size)(SmartHash* shash);
-Bool LPG_(smart_hash_is_empty)(SmartHash* shash);
-Float LPG_(smart_hash_growth_rate)(SmartHash* shash);
-void LPG_(smart_hash_set_growth_rate)(SmartHash* shash, Float rate);
-void* LPG_(smart_hash_get)(SmartHash* shash, HWord key, HWord (*hash_key)(void*));
-void* LPG_(smart_hash_put)(SmartHash* shash, void* value, HWord (*hash_key)(void*));
-void* LPG_(smart_hash_remove)(SmartHash* shash, HWord key, HWord (*hash_key)(void*));
-Bool LPG_(smart_hash_contains)(SmartHash* shash, HWord key, HWord (*hash_key)(void*));
-void LPG_(smart_hash_forall)(SmartHash* shash, Bool (*func)(void*, void*), void* arg);
-void LPG_(smart_hash_merge)(SmartHash* dst, SmartHash* src, HWord (*hash_key)(void*));
+SmartHash* CGD_(new_smart_hash)(Int size);
+SmartHash* CGD_(new_fixed_smart_hash)(Int size);
+void CGD_(delete_smart_hash)(SmartHash* shash);
+void CGD_(smart_hash_clear)(SmartHash* shash, void (*remove_value)(void*));
+Int CGD_(smart_hash_count)(SmartHash* shash);
+Int CGD_(smart_hash_size)(SmartHash* shash);
+Bool CGD_(smart_hash_is_empty)(SmartHash* shash);
+Float CGD_(smart_hash_growth_rate)(SmartHash* shash);
+void CGD_(smart_hash_set_growth_rate)(SmartHash* shash, Float rate);
+void* CGD_(smart_hash_get)(SmartHash* shash, HWord key, HWord (*hash_key)(void*));
+void* CGD_(smart_hash_put)(SmartHash* shash, void* value, HWord (*hash_key)(void*));
+void* CGD_(smart_hash_remove)(SmartHash* shash, HWord key, HWord (*hash_key)(void*));
+Bool CGD_(smart_hash_contains)(SmartHash* shash, HWord key, HWord (*hash_key)(void*));
+void CGD_(smart_hash_forall)(SmartHash* shash, Bool (*func)(void*, void*), void* arg);
+void CGD_(smart_hash_merge)(SmartHash* dst, SmartHash* src, HWord (*hash_key)(void*));
 
 /* from smartlist.c */
-SmartList* LPG_(new_smart_list)(Int size);
-SmartList* LPG_(new_fixed_smart_list)(Int size);
-SmartList* LPG_(clone_smart_list)(SmartList* slist);
-void LPG_(delete_smart_list)(SmartList* slist);
-void LPG_(smart_list_clear)(SmartList* slist, void (*remove_element)(void*));
-Int LPG_(smart_list_size)(SmartList* slist);
-Int LPG_(smart_list_count)(SmartList* slist);
-Bool LPG_(smart_list_is_empty)(SmartList* slist);
-void* LPG_(smart_list_at)(SmartList* slist, Int index);
-void* LPG_(smart_list_head)(SmartList* slist);
-void* LPG_(smart_list_tail)(SmartList* slist);
-void LPG_(smart_list_set)(SmartList* slist, Int index, void* value);
-void LPG_(smart_list_del)(SmartList* slist, Int index, Bool remove_contents);
-void LPG_(smart_list_add)(SmartList* slist, void* value);
-void LPG_(smart_list_copy)(SmartList* dst, SmartList* src);
-void LPG_(smart_list_forall)(SmartList* slist, Bool (*func)(void*, void*), void* arg);
-Bool LPG_(smart_list_contains)(SmartList* slist, void* value, Bool (*cmp)(void*, void*));
-Float LPG_(smart_list_growth_rate)(SmartList* slist);
-void LPG_(smart_list_set_growth_rate)(SmartList* slist, Float rate);
-SmartValue* LPG_(smart_list_find)(SmartList* slist, Bool (*cmp)(void*, void*), void* arg);
-void LPG_(smart_list_delete_value)(SmartValue* sv);
-SmartSeek* LPG_(smart_list_seek)(SmartList* slist);
-void LPG_(smart_list_delete_seek)(SmartSeek* ss);
-void LPG_(smart_list_rewind)(SmartSeek* ss);
-Int LPG_(smart_list_get_index)(SmartSeek* ss);
-void LPG_(smart_list_set_index)(SmartSeek* ss, Int index);
-Bool LPG_(smart_list_has_next)(SmartSeek* ss);
-void LPG_(smart_list_next)(SmartSeek* ss);
-void* LPG_(smart_list_get_value)(SmartSeek* ss);
-void LPG_(smart_list_set_value)(SmartSeek* ss, void* value);
+SmartList* CGD_(new_smart_list)(Int size);
+SmartList* CGD_(new_fixed_smart_list)(Int size);
+SmartList* CGD_(clone_smart_list)(SmartList* slist);
+void CGD_(delete_smart_list)(SmartList* slist);
+void CGD_(smart_list_clear)(SmartList* slist, void (*remove_element)(void*));
+Int CGD_(smart_list_size)(SmartList* slist);
+Int CGD_(smart_list_count)(SmartList* slist);
+Bool CGD_(smart_list_is_empty)(SmartList* slist);
+void* CGD_(smart_list_at)(SmartList* slist, Int index);
+void* CGD_(smart_list_head)(SmartList* slist);
+void* CGD_(smart_list_tail)(SmartList* slist);
+void CGD_(smart_list_set)(SmartList* slist, Int index, void* value);
+void CGD_(smart_list_del)(SmartList* slist, Int index, Bool remove_contents);
+void CGD_(smart_list_add)(SmartList* slist, void* value);
+void CGD_(smart_list_copy)(SmartList* dst, SmartList* src);
+void CGD_(smart_list_forall)(SmartList* slist, Bool (*func)(void*, void*), void* arg);
+Bool CGD_(smart_list_contains)(SmartList* slist, void* value, Bool (*cmp)(void*, void*));
+Float CGD_(smart_list_growth_rate)(SmartList* slist);
+void CGD_(smart_list_set_growth_rate)(SmartList* slist, Float rate);
+SmartValue* CGD_(smart_list_find)(SmartList* slist, Bool (*cmp)(void*, void*), void* arg);
+void CGD_(smart_list_delete_value)(SmartValue* sv);
+SmartSeek* CGD_(smart_list_seek)(SmartList* slist);
+void CGD_(smart_list_delete_seek)(SmartSeek* ss);
+void CGD_(smart_list_rewind)(SmartSeek* ss);
+Int CGD_(smart_list_get_index)(SmartSeek* ss);
+void CGD_(smart_list_set_index)(SmartSeek* ss, Int index);
+Bool CGD_(smart_list_has_next)(SmartSeek* ss);
+void CGD_(smart_list_next)(SmartSeek* ss);
+void* CGD_(smart_list_get_value)(SmartSeek* ss);
+void CGD_(smart_list_set_value)(SmartSeek* ss, void* value);
 
 /* from instrs.c */
-void LPG_(init_instrs_pool)(void);
-void LPG_(destroy_instrs_pool)(void);
-UniqueInstr* LPG_(get_instr)(Addr addr, Int size);
-UniqueInstr* LPG_(find_instr)(Addr addr);
-Addr LPG_(instr_addr)(UniqueInstr* instr);
-Int LPG_(instr_size)(UniqueInstr* instr);
-const HChar* LPG_(instr_name)(UniqueInstr* instr);
-InstrDesc* LPG_(instr_description)(UniqueInstr* instr);
-Bool LPG_(instrs_cmp)(UniqueInstr* i1, UniqueInstr* i2);
-void LPG_(print_instr)(UniqueInstr* instr, Bool complete);
-void LPG_(fprint_instr)(VgFile* fp, UniqueInstr* instr, Bool complete);
-void LPG_(print_instr_description)(InstrDesc* idesc);
-void LPG_(fprint_instr_description)(VgFile* fp, InstrDesc* idesc);
+void CGD_(init_instrs_pool)(void);
+void CGD_(destroy_instrs_pool)(void);
+UniqueInstr* CGD_(get_instr)(Addr addr, Int size);
+UniqueInstr* CGD_(find_instr)(Addr addr);
+Addr CGD_(instr_addr)(UniqueInstr* instr);
+Int CGD_(instr_size)(UniqueInstr* instr);
+const HChar* CGD_(instr_name)(UniqueInstr* instr);
+InstrDesc* CGD_(instr_description)(UniqueInstr* instr);
+Bool CGD_(instrs_cmp)(UniqueInstr* i1, UniqueInstr* i2);
+void CGD_(print_instr)(UniqueInstr* instr, Bool complete);
+void CGD_(fprint_instr)(VgFile* fp, UniqueInstr* instr, Bool complete);
+void CGD_(print_instr_description)(InstrDesc* idesc);
+void CGD_(fprint_instr_description)(VgFile* fp, InstrDesc* idesc);
 
 /* from callstack.c */
-void LPG_(init_call_stack)(call_stack* s);
-void LPG_(destroy_call_stack)(call_stack* s);
-void LPG_(copy_current_call_stack)(call_stack* dst);
-void LPG_(set_current_call_stack)(call_stack* s);
-call_entry* LPG_(get_call_entry)(Int n);
-void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp);
-void LPG_(pop_call_stack)(Bool halt);
-Int LPG_(unwind_call_stack)(Addr sp, Int);
+void CGD_(init_call_stack)(call_stack* s);
+void CGD_(destroy_call_stack)(call_stack* s);
+void CGD_(copy_current_call_stack)(call_stack* dst);
+void CGD_(set_current_call_stack)(call_stack* s);
+call_entry* CGD_(get_call_entry)(Int n);
+void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp);
+void CGD_(pop_call_stack)(Bool halt);
+Int CGD_(unwind_call_stack)(Addr sp, Int);
 
 /* from threads.c */
-void LPG_(init_threads)(void);
-void LPG_(destroy_threads)(void);
-thread_info** LPG_(get_threads)(void);
-thread_info* LPG_(get_current_thread)(void);
-void LPG_(switch_thread)(ThreadId tid);
-void LPG_(forall_threads)(void (*func)(thread_info*));
-void LPG_(run_thread)(ThreadId tid);
+void CGD_(init_threads)(void);
+void CGD_(destroy_threads)(void);
+thread_info** CGD_(get_threads)(void);
+thread_info* CGD_(get_current_thread)(void);
+void CGD_(switch_thread)(ThreadId tid);
+void CGD_(forall_threads)(void (*func)(thread_info*));
+void CGD_(run_thread)(ThreadId tid);
 
-void LPG_(init_exec_state)(exec_state* es);
-void LPG_(init_exec_stack)(exec_stack* es);
-void LPG_(destroy_exec_stack)(exec_stack* es);
-void LPG_(copy_current_exec_stack)(exec_stack* dst);
-void LPG_(set_current_exec_stack)(exec_stack* dst);
-void LPG_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack);
-void LPG_(post_signal)(ThreadId tid, Int sigNum);
-void LPG_(run_post_signal_on_call_stack_bottom)(void);
+void CGD_(init_exec_state)(exec_state* es);
+void CGD_(init_exec_stack)(exec_stack* es);
+void CGD_(destroy_exec_stack)(exec_stack* es);
+void CGD_(copy_current_exec_stack)(exec_stack* dst);
+void CGD_(set_current_exec_stack)(exec_stack* dst);
+void CGD_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack);
+void CGD_(post_signal)(ThreadId tid, Int sigNum);
+void CGD_(run_post_signal_on_call_stack_bottom)(void);
 
 /*------------------------------------------------------------*/
 /*--- Exported global variables                            ---*/
 /*------------------------------------------------------------*/
 
-extern CommandLineOptions LPG_(clo);
-extern Statistics LPG_(stat);
+extern CommandLineOptions CGD_(clo);
+extern Statistics CGD_(stat);
 
 /* Function active counter array, indexed by function number */
-extern UInt* LPG_(fn_active_array);
+extern UInt* CGD_(fn_active_array);
  /* min of L1 and LL cache line sizes */
-extern call_stack LPG_(current_call_stack);
-extern exec_state LPG_(current_state);
-extern ThreadId   LPG_(current_tid);
+extern call_stack CGD_(current_call_stack);
+extern exec_state CGD_(current_state);
+extern ThreadId   CGD_(current_tid);
 
 /*------------------------------------------------------------*/
 /*--- Debug output                                         ---*/
 /*------------------------------------------------------------*/
 
-#if LPG_ENABLE_DEBUG
+#if CGD_ENABLE_DEBUG
 
-#define LPG_DEBUGIF(x) \
-  if (UNLIKELY( (LPG_(clo).verbose >x) && \
-                (LPG_(stat).bb_executions >= LPG_(clo).verbose_start)))
+#define CGD_DEBUGIF(x) \
+  if (UNLIKELY( (CGD_(clo).verbose >x) && \
+                (CGD_(stat).bb_executions >= CGD_(clo).verbose_start)))
 
-#define LPG_DEBUG(x,format,args...)   \
-    LPG_DEBUGIF(x) {                  \
-      LPG_(print_bbno)();	      \
+#define CGD_DEBUG(x,format,args...)   \
+    CGD_DEBUGIF(x) {                  \
+      CGD_(print_bbno)();	      \
       VG_(printf)(format,##args);     \
     }
 
-#define LPG_ASSERT(cond)              \
+#define CGD_ASSERT(cond)              \
     if (UNLIKELY(!(cond))) {          \
-      LPG_(print_bbno)();	      \
+      CGD_(print_bbno)();	      \
       tl_assert(cond);                \
      }
 
 #else
-#define LPG_DEBUGIF(x) if (0)
-#define LPG_DEBUG(x...) {}
-#define LPG_ASSERT(cond) tl_assert(cond);
+#define CGD_DEBUGIF(x) if (0)
+#define CGD_DEBUG(x...) {}
+#define CGD_ASSERT(cond) tl_assert(cond);
 #endif
 
 /* from debug.c */
-void LPG_(print_bbno)(void);
-void LPG_(print_execstate)(int s, exec_state* es);
-void LPG_(print_bb)(int s, BB* bb);
-void LPG_(print_stackentry)(int s, int sp);
-void LPG_(print_addr)(Addr addr);
-void LPG_(print_addr_ln)(Addr addr);
+void CGD_(print_bbno)(void);
+void CGD_(print_execstate)(int s, exec_state* es);
+void CGD_(print_bb)(int s, BB* bb);
+void CGD_(print_stackentry)(int s, int sp);
+void CGD_(print_addr)(Addr addr);
+void CGD_(print_addr_ln)(Addr addr);
 
-#if LPG_DEBUG_MEM
-void* LPG_(malloc)(const HChar* cc, UWord s, const HChar* f);
-void* LPG_(realloc)(const HChar* cc, void* p, UWord s, const HChar* f);
-void LPG_(free)(void* p, const HChar* f);
-HChar* LPG_(strdup)(const HChar* cc, const HChar* s, const HChar* f);
+#if CGD_DEBUG_MEM
+void* CGD_(malloc)(const HChar* cc, UWord s, const HChar* f);
+void* CGD_(realloc)(const HChar* cc, void* p, UWord s, const HChar* f);
+void CGD_(free)(void* p, const HChar* f);
+HChar* CGD_(strdup)(const HChar* cc, const HChar* s, const HChar* f);
 
-#define LPG_MALLOC(_cc,x)		LPG_(malloc)((_cc),x,__FUNCTION__)
-#define LPG_FREE(p)				LPG_(free)(p,__FUNCTION__)
-#define LPG_REALLOC(_cc,p,x)		LPG_(realloc)((_cc),p,x,__FUNCTION__)
-#define LPG_STRDUP(_cc,s)		LPG_(strdup)((_cc),s,__FUNCTION__)
+#define CGD_MALLOC(_cc,x)		CGD_(malloc)((_cc),x,__FUNCTION__)
+#define CGD_FREE(p)				CGD_(free)(p,__FUNCTION__)
+#define CGD_REALLOC(_cc,p,x)		CGD_(realloc)((_cc),p,x,__FUNCTION__)
+#define CGD_STRDUP(_cc,s)		CGD_(strdup)((_cc),s,__FUNCTION__)
 #else
-#define LPG_MALLOC(_cc,x)		VG_(malloc)((_cc),x)
-#define LPG_FREE(p)				VG_(free)(p)
-#define LPG_REALLOC(_cc,p,x)		VG_(realloc)((_cc),p,x)
-#define LPG_STRDUP(_cc,s)		VG_(strdup)((_cc),s)
+#define CGD_MALLOC(_cc,x)		VG_(malloc)((_cc),x)
+#define CGD_FREE(p)				VG_(free)(p)
+#define CGD_REALLOC(_cc,p,x)		VG_(realloc)((_cc),p,x)
+#define CGD_STRDUP(_cc,s)		VG_(strdup)((_cc),s)
 #endif
 
-#define LPG_UNUSED(arg)			(void)arg;
-#define LPG_DATA_FREE(p,x)		\
+#define CGD_UNUSED(arg)			(void)arg;
+#define CGD_DATA_FREE(p,x)		\
 	do { 						\
 		VG_(memset)(p, 0x41, x);	\
-		LPG_FREE(p); 			\
+		CGD_FREE(p); 			\
 	} while (0)
 
-#endif /* LPG_GLOBAL */
+#endif /* CGD_GLOBAL */

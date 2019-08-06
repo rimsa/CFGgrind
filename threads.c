@@ -1,11 +1,15 @@
 /*--------------------------------------------------------------------*/
-/*--- Callgrind                                                    ---*/
-/*---                                                 ct_threads.c ---*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                    threads.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Callgrind, a Valgrind tool for call tracing.
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
 
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This tool is derived from and contains lot of code from Callgrind
    Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
@@ -58,42 +62,42 @@ static exec_stack current_states;
  */
 
 /* current running thread */
-ThreadId LPG_(current_tid);
+ThreadId CGD_(current_tid);
 
 static thread_info** threads;
 
-thread_info** LPG_(get_threads)()
+thread_info** CGD_(get_threads)()
 {
   return threads;
 }
 
-thread_info* LPG_(get_current_thread)()
+thread_info* CGD_(get_current_thread)()
 {
-  return threads[LPG_(current_tid)];
+  return threads[CGD_(current_tid)];
 }
 
-void LPG_(init_threads)() {
+void CGD_(init_threads)() {
 	UInt i;
 
-	threads = LPG_MALLOC("cl.threads.it.1", VG_N_THREADS * sizeof threads[0]);
+	threads = CGD_MALLOC("cgd.threads.it.1", VG_N_THREADS * sizeof threads[0]);
 
 	for(i=0;i<VG_N_THREADS;i++)
 		threads[i] = 0;
 
-	LPG_(current_tid) = VG_INVALID_THREADID;
+	CGD_(current_tid) = VG_INVALID_THREADID;
 }
 
 /* switches through all threads and calls func */
-void LPG_(forall_threads)(void (*func)(thread_info*))
+void CGD_(forall_threads)(void (*func)(thread_info*))
 {
-  Int t, orig_tid = LPG_(current_tid);
+  Int t, orig_tid = CGD_(current_tid);
 
   for(t=1;t<VG_N_THREADS;t++) {
     if (!threads[t]) continue;
-    LPG_(switch_thread)(t);
+    CGD_(switch_thread)(t);
     (*func)(threads[t]);
   }
-  LPG_(switch_thread)(orig_tid);
+  CGD_(switch_thread)(orig_tid);
 }
 
 
@@ -102,36 +106,36 @@ thread_info* new_thread(void)
 {
     thread_info* t;
 
-    t = (thread_info*) LPG_MALLOC("cl.threads.nt.1",
+    t = (thread_info*) CGD_MALLOC("cgd.threads.nt.1",
                                   sizeof(thread_info));
 
     /* init state */
-    LPG_(init_exec_stack)( &(t->states) );
-    LPG_(init_call_stack)( &(t->calls) );
+    CGD_(init_exec_stack)( &(t->states) );
+    CGD_(init_call_stack)( &(t->calls) );
 
     return t;
 }
 
 static
 void delete_thread(thread_info* t) {
-	LPG_ASSERT(t != 0);
+	CGD_ASSERT(t != 0);
 
 	/* destroy state */
-	LPG_(destroy_call_stack)(&(t->calls));
-	LPG_(destroy_exec_stack)(&(t->states));
+	CGD_(destroy_call_stack)(&(t->calls));
+	CGD_(destroy_exec_stack)(&(t->states));
 
-	LPG_DATA_FREE(t, sizeof(thread_info));
+	CGD_DATA_FREE(t, sizeof(thread_info));
 }
 
-void LPG_(destroy_threads)() {
+void CGD_(destroy_threads)() {
 	UInt i;
 
 	for (i = 0; i < VG_N_THREADS; i++) {
 		if (threads[i]) {
 			// Update the thread info for the current thread.
-			if (LPG_(current_tid) == i) {
-				LPG_(copy_current_exec_stack)(&(threads[i]->states));
-				LPG_(copy_current_call_stack)(&(threads[i]->calls));
+			if (CGD_(current_tid) == i) {
+				CGD_(copy_current_exec_stack)(&(threads[i]->states));
+				CGD_(copy_current_call_stack)(&(threads[i]->calls));
 			}
 
 			delete_thread(threads[i]);
@@ -139,32 +143,32 @@ void LPG_(destroy_threads)() {
 		}
 	}
 
-	LPG_FREE(threads);
+	CGD_FREE(threads);
 	threads = 0;
 
-	LPG_(current_tid) = VG_INVALID_THREADID;
+	CGD_(current_tid) = VG_INVALID_THREADID;
 }
 
-void LPG_(switch_thread)(ThreadId tid)
+void CGD_(switch_thread)(ThreadId tid)
 {
-  if (tid == LPG_(current_tid)) return;
+  if (tid == CGD_(current_tid)) return;
 
-  LPG_DEBUG(0, ">> thread %u (was %u)\n", tid, LPG_(current_tid));
+  CGD_DEBUG(0, ">> thread %u (was %u)\n", tid, CGD_(current_tid));
 
-  if (LPG_(current_tid) != VG_INVALID_THREADID) {    
+  if (CGD_(current_tid) != VG_INVALID_THREADID) {    
     /* save thread state */
-    thread_info* t = threads[LPG_(current_tid)];
+    thread_info* t = threads[CGD_(current_tid)];
 
-    LPG_ASSERT(t != 0);
+    CGD_ASSERT(t != 0);
 
     /* current context (including signal handler contexts) */
     exec_state_save();
-    LPG_(copy_current_exec_stack)( &(t->states) );
-    LPG_(copy_current_call_stack)( &(t->calls) );
+    CGD_(copy_current_exec_stack)( &(t->states) );
+    CGD_(copy_current_call_stack)( &(t->calls) );
   }
 
-  LPG_(current_tid) = tid;
-  LPG_ASSERT(tid < VG_N_THREADS);
+  CGD_(current_tid) = tid;
+  CGD_ASSERT(tid < VG_N_THREADS);
 
   if (tid != VG_INVALID_THREADID) {
     thread_info* t;
@@ -176,85 +180,85 @@ void LPG_(switch_thread)(ThreadId tid)
     t = threads[tid];
 
     /* current context (including signal handler contexts) */
-    LPG_(set_current_exec_stack)( &(t->states) );
+    CGD_(set_current_exec_stack)( &(t->states) );
     exec_state_restore();
-    LPG_(set_current_call_stack)( &(t->calls) );
+    CGD_(set_current_call_stack)( &(t->calls) );
   }
 }
 
 
-void LPG_(run_thread)(ThreadId tid)
+void CGD_(run_thread)(ThreadId tid)
 {
     /* now check for thread switch */
-    LPG_(switch_thread)(tid);
+    CGD_(switch_thread)(tid);
 }
 
-void LPG_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack)
+void CGD_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack)
 {
     exec_state *es;
 
-    LPG_DEBUG(0, ">> pre_signal(TID %u, sig %d, alt_st %s)\n",
+    CGD_DEBUG(0, ">> pre_signal(TID %u, sig %d, alt_st %s)\n",
 	     tid, sigNum, alt_stack ? "yes":"no");
 
     /* switch to the thread the handler runs in */
-    LPG_(switch_thread)(tid);
+    CGD_(switch_thread)(tid);
 
     /* save current execution state */
     exec_state_save();
 
     /* setup new cxtinfo struct for this signal handler */
     es = push_exec_state(sigNum);
-    es->call_stack_bottom = LPG_(current_call_stack).sp;
+    es->call_stack_bottom = CGD_(current_call_stack).sp;
 
     /* setup current state for a spontaneous call */
-    LPG_(init_exec_state)( &LPG_(current_state) );
-    LPG_(current_state).sig = sigNum;
+    CGD_(init_exec_state)( &CGD_(current_state) );
+    CGD_(current_state).sig = sigNum;
 }
 
 /* Run post-signal if the stackpointer for call stack is at
  * the bottom in current exec state (e.g. a signal handler)
  *
- * Called from LPG_(pop_call_stack)
+ * Called from CGD_(pop_call_stack)
  */
-void LPG_(run_post_signal_on_call_stack_bottom)()
+void CGD_(run_post_signal_on_call_stack_bottom)()
 {
     exec_state* es = top_exec_state();
-    LPG_ASSERT(es != 0);
-    LPG_ASSERT(LPG_(current_state).sig >0);
+    CGD_ASSERT(es != 0);
+    CGD_ASSERT(CGD_(current_state).sig >0);
 
-    if (LPG_(current_call_stack).sp == es->call_stack_bottom)
-	LPG_(post_signal)( LPG_(current_tid), LPG_(current_state).sig );
+    if (CGD_(current_call_stack).sp == es->call_stack_bottom)
+	CGD_(post_signal)( CGD_(current_tid), CGD_(current_state).sig );
 }
 
-void LPG_(post_signal)(ThreadId tid, Int sigNum)
+void CGD_(post_signal)(ThreadId tid, Int sigNum)
 {
     exec_state* es;
 
-    LPG_DEBUG(0, ">> post_signal(TID %u, sig %d)\n",
+    CGD_DEBUG(0, ">> post_signal(TID %u, sig %d)\n",
 	     tid, sigNum);
 
     /* thread switching potentially needed, eg. with instrumentation off */
-    LPG_(switch_thread)(tid);
-    LPG_ASSERT(sigNum == LPG_(current_state).sig);
+    CGD_(switch_thread)(tid);
+    CGD_ASSERT(sigNum == CGD_(current_state).sig);
 
     /* Unwind call stack of this signal handler.
      * This should only be needed at finalisation time
      */
     es = top_exec_state();
-    LPG_ASSERT(es != 0);
-    while(LPG_(current_call_stack).sp > es->call_stack_bottom)
-      LPG_(pop_call_stack)(False);
+    CGD_ASSERT(es != 0);
+    while(CGD_(current_call_stack).sp > es->call_stack_bottom)
+      CGD_(pop_call_stack)(False);
 
     /* restore previous context */
     es->sig = -1;
     current_states.sp--;
     es = top_exec_state();
-    LPG_(current_state).sig = es->sig;
+    CGD_(current_state).sig = es->sig;
     exec_state_restore();
 
     /* There is no way to reliable get the thread ID we are switching to
      * after this handler returns. So we sync with actual TID at start of
-     * LPG_(setup_bb)(), which should be the next for cfggrind.
+     * CGD_(setup_bb)(), which should be the next for cfggrind.
      */
 }
 
@@ -273,7 +277,7 @@ void LPG_(post_signal)(ThreadId tid, Int sigNum)
  */
 
 /* not initialized: call_stack_bottom, sig */
-void LPG_(init_exec_state)(exec_state* es)
+void CGD_(init_exec_state)(exec_state* es)
 {
   es->jmps_passed = 0;
   es->bb = 0;
@@ -285,23 +289,23 @@ void LPG_(init_exec_state)(exec_state* es)
 static exec_state* new_exec_state(Int sigNum)
 {
     exec_state* es;
-    es = (exec_state*) LPG_MALLOC("cl.threads.nes.1",
+    es = (exec_state*) CGD_MALLOC("cgd.threads.nes.1",
                                   sizeof(exec_state));
 
     /* allocate real cost space: needed as incremented by
      * simulation functions */
-    LPG_(init_exec_state)(es);
+    CGD_(init_exec_state)(es);
     es->sig        = sigNum;
     es->call_stack_bottom  = 0;
 
     return es;
 }
 
-void LPG_(init_exec_stack)(exec_stack* es)
+void CGD_(init_exec_stack)(exec_stack* es)
 {
   Int i;
 
-  LPG_ASSERT(es != 0);
+  CGD_ASSERT(es != 0);
 
   /* The first element is for the main thread */
   es->entry[0] = new_exec_state(0);
@@ -310,20 +314,20 @@ void LPG_(init_exec_stack)(exec_stack* es)
   es->sp = 0;
 }
 
-void LPG_(destroy_exec_stack)(exec_stack* es) {
+void CGD_(destroy_exec_stack)(exec_stack* es) {
 	Int i;
 
-	LPG_ASSERT(es != 0);
+	CGD_ASSERT(es != 0);
 
 	for (i = 0; i < MAX_SIGHANDLERS; i++) {
 		if (es->entry[i]) {
-			LPG_FREE(es->entry[i]);
+			CGD_FREE(es->entry[i]);
 			es->entry[i] = 0;
 		}
 	}
 }
 
-void LPG_(copy_current_exec_stack)(exec_stack* dst)
+void CGD_(copy_current_exec_stack)(exec_stack* dst)
 {
   Int i;
 
@@ -332,7 +336,7 @@ void LPG_(copy_current_exec_stack)(exec_stack* dst)
     dst->entry[i] = current_states.entry[i];
 }
 
-void LPG_(set_current_exec_stack)(exec_stack* dst)
+void CGD_(set_current_exec_stack)(exec_stack* dst)
 {
   Int i;
 
@@ -349,9 +353,9 @@ exec_state* top_exec_state(void)
   Int sp = current_states.sp;
   exec_state* es;
 
-  LPG_ASSERT((sp >= 0) && (sp < MAX_SIGHANDLERS));
+  CGD_ASSERT((sp >= 0) && (sp < MAX_SIGHANDLERS));
   es = current_states.entry[sp];
-  LPG_ASSERT(es != 0);
+  CGD_ASSERT(es != 0);
   return es;
 }
 
@@ -367,8 +371,8 @@ static exec_state* push_exec_state(int sigNum)
   current_states.sp++;
   sp = current_states.sp;
 
-  LPG_ASSERT((sigNum > 0) && (sigNum <= _VKI_NSIG));
-  LPG_ASSERT((sp > 0) && (sp < MAX_SIGHANDLERS));
+  CGD_ASSERT((sigNum > 0) && (sigNum <= _VKI_NSIG));
+  CGD_ASSERT((sp > 0) && (sp < MAX_SIGHANDLERS));
   es = current_states.entry[sp];
   if (!es) {
     es = new_exec_state(sigNum);
@@ -386,19 +390,19 @@ exec_state* exec_state_save(void)
 {
   exec_state* es = top_exec_state();
 
-  es->jmps_passed  = LPG_(current_state).jmps_passed;
-  es->bb           = LPG_(current_state).bb;
-  es->cfg          = LPG_(current_state).cfg;
-  es->dangling     = LPG_(current_state).dangling;
+  es->jmps_passed  = CGD_(current_state).jmps_passed;
+  es->bb           = CGD_(current_state).bb;
+  es->cfg          = CGD_(current_state).cfg;
+  es->dangling     = CGD_(current_state).dangling;
 
-  LPG_DEBUGIF(1) {
-    LPG_DEBUG(1, "  cxtinfo_save(sig %d): jmps_passed %d\n",
+  CGD_DEBUGIF(1) {
+    CGD_DEBUG(1, "  cxtinfo_save(sig %d): jmps_passed %d\n",
 	     es->sig, es->jmps_passed);
-    LPG_(print_bb)(-9, es->bb);
+    CGD_(print_bb)(-9, es->bb);
   }
 
   /* signal number does not need to be saved */
-  LPG_ASSERT(LPG_(current_state).sig == es->sig);
+  CGD_ASSERT(CGD_(current_state).sig == es->sig);
 
   return es;
 }
@@ -408,14 +412,14 @@ exec_state* exec_state_restore(void)
 {
   exec_state* es = top_exec_state();
   
-  LPG_(current_state).jmps_passed  = es->jmps_passed;
-  LPG_(current_state).bb           = es->bb;
-  LPG_(current_state).sig          = es->sig;
-  LPG_(current_state).cfg          = es->cfg;
-  LPG_(current_state).dangling     = es->dangling;
+  CGD_(current_state).jmps_passed  = es->jmps_passed;
+  CGD_(current_state).bb           = es->bb;
+  CGD_(current_state).sig          = es->sig;
+  CGD_(current_state).cfg          = es->cfg;
+  CGD_(current_state).dangling     = es->dangling;
 
-  LPG_DEBUGIF(1) {
-	LPG_DEBUG(1, "  exec_state_restore(sig %d): jmps_passed %d\n",
+  CGD_DEBUGIF(1) {
+	CGD_DEBUG(1, "  exec_state_restore(sig %d): jmps_passed %d\n",
 		  es->sig, es->jmps_passed);
   }
 

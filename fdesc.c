@@ -1,3 +1,32 @@
+/*--------------------------------------------------------------------*/
+/*--- CFGgrind                                                     ---*/
+/*---                                                      fdesc.c ---*/
+/*--------------------------------------------------------------------*/
+
+/*
+   This file is part of CFGgrind, a dynamic control flow graph (CFG)
+   reconstruction tool.
+
+   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
+
+   The GNU General Public License is contained in the file COPYING.
+*/
+
 #include "global.h"
 
 static
@@ -12,7 +41,7 @@ struct _FunctionDesc {
 	UInt fn_line;
 };
 
-FunctionDesc* LPG_(new_fdesc)(Addr addr, Bool entry) {
+FunctionDesc* CGD_(new_fdesc)(Addr addr, Bool entry) {
 	const HChar* tmp;
 	FunctionDesc* fdesc;
 	Bool found;
@@ -23,14 +52,14 @@ FunctionDesc* LPG_(new_fdesc)(Addr addr, Bool entry) {
 			VG_(get_fnname)(ep, addr, &tmp);
 
 	if (found) {
-		fdesc = (FunctionDesc*) LPG_MALLOC("lg.fdesc.nf.1", sizeof(FunctionDesc));
+		fdesc = (FunctionDesc*) CGD_MALLOC("cgd.fdesc.nf.1", sizeof(FunctionDesc));
 
-		fdesc->fn_name = LPG_STRDUP("lg.fdesc.nf.2", tmp);
+		fdesc->fn_name = CGD_STRDUP("cgd.fdesc.nf.2", tmp);
 		if (!VG_(get_linenum)(ep, addr, &(fdesc->fn_line)))
 			fdesc->fn_line = -1;
 
 		fdesc->obj_name = VG_(get_objname)(ep, addr, &tmp) ?
-								LPG_STRDUP("lg.fdesc.nf.3", tmp) : 0;
+								CGD_STRDUP("cgd.fdesc.nf.3", tmp) : 0;
 	} else {
 		fdesc = 0;
 	}
@@ -38,33 +67,33 @@ FunctionDesc* LPG_(new_fdesc)(Addr addr, Bool entry) {
 	return fdesc;
 }
 
-void LPG_(delete_fdesc)(FunctionDesc* fdesc) {
-	LPG_ASSERT(fdesc);
-	LPG_ASSERT(fdesc->fn_name);
+void CGD_(delete_fdesc)(FunctionDesc* fdesc) {
+	CGD_ASSERT(fdesc);
+	CGD_ASSERT(fdesc->fn_name);
 
-	LPG_DATA_FREE(fdesc->fn_name, VG_(strlen)(fdesc->fn_name));
+	CGD_DATA_FREE(fdesc->fn_name, VG_(strlen)(fdesc->fn_name));
 	if (fdesc->obj_name)
-		LPG_DATA_FREE(fdesc->obj_name, VG_(strlen)(fdesc->obj_name));
+		CGD_DATA_FREE(fdesc->obj_name, VG_(strlen)(fdesc->obj_name));
 
-	LPG_DATA_FREE(fdesc, sizeof(FunctionDesc));
+	CGD_DATA_FREE(fdesc, sizeof(FunctionDesc));
 }
 
-HChar* LPG_(fdesc_object_name)(FunctionDesc* fdesc) {
-	LPG_ASSERT(fdesc != 0);
+HChar* CGD_(fdesc_object_name)(FunctionDesc* fdesc) {
+	CGD_ASSERT(fdesc != 0);
 	return fdesc->obj_name;
 }
 
-HChar* LPG_(fdesc_function_name)(FunctionDesc* fdesc) {
-	LPG_ASSERT(fdesc != 0);
+HChar* CGD_(fdesc_function_name)(FunctionDesc* fdesc) {
+	CGD_ASSERT(fdesc != 0);
 	return fdesc->fn_name;
 }
 
-UInt LPG_(fdesc_function_line)(FunctionDesc* fdesc) {
-	LPG_ASSERT(fdesc != 0);
+UInt CGD_(fdesc_function_line)(FunctionDesc* fdesc) {
+	CGD_ASSERT(fdesc != 0);
 	return fdesc->fn_line;
 }
 
-void LPG_(print_fdesc)(FunctionDesc* fdesc) {
+void CGD_(print_fdesc)(FunctionDesc* fdesc) {
 	if (!fdesc)
 		VG_(printf)("unknown");
 	else
@@ -74,8 +103,8 @@ void LPG_(print_fdesc)(FunctionDesc* fdesc) {
 				fdesc->fn_line);
 }
 
-void LPG_(fprint_fdesc)(VgFile* fp, FunctionDesc* fdesc) {
-	LPG_ASSERT(fp != 0);
+void CGD_(fprint_fdesc)(VgFile* fp, FunctionDesc* fdesc) {
+	CGD_ASSERT(fp != 0);
 
 	if (!fdesc)
 		VG_(fprintf)(fp, "unknown");
@@ -86,19 +115,19 @@ void LPG_(fprint_fdesc)(VgFile* fp, FunctionDesc* fdesc) {
 				fdesc->fn_line);
 }
 
-HChar* LPG_(fdesc2str)(FunctionDesc* fdesc) {
+HChar* CGD_(fdesc2str)(FunctionDesc* fdesc) {
 	const HChar* obj_name;
 	const HChar* fn_name;
 	HChar* fn_obj_name;
 
 	if (fdesc == NULL) {
-		return LPG_STRDUP("lg.fdesc.fts.1", "unknown");
+		return CGD_STRDUP("cgd.fdesc.fts.1", "unknown");
 	} else {
 		obj_name = fdesc->obj_name ? fdesc->obj_name : unknown_name;
 		fn_name = fdesc->fn_name ? fdesc->fn_name : unknown_name;
 
 		SizeT size = VG_(strlen)(obj_name) + VG_(strlen)(fn_name) + + 3;
-		fn_obj_name = LPG_MALLOC("lg.fts.2", size);
+		fn_obj_name = CGD_MALLOC("cgd.fts.2", size);
 		if (!fn_obj_name)
 			VG_(tool_panic)("cfggrind: unable to allocate memory");
 
@@ -108,7 +137,7 @@ HChar* LPG_(fdesc2str)(FunctionDesc* fdesc) {
 	}
 }
 
-FunctionDesc* LPG_(str2fdesc)(const HChar* str) {
+FunctionDesc* CGD_(str2fdesc)(const HChar* str) {
 	HChar* ptr;
 	HChar* tmp;
 	SizeT size;
@@ -117,24 +146,24 @@ FunctionDesc* LPG_(str2fdesc)(const HChar* str) {
 	if (!str || VG_(strcasecmp)(str, "unknown") == 0)
 		return 0;
 
-	fdesc = (FunctionDesc*) LPG_MALLOC("lg.fdesc.s2f.1", sizeof(FunctionDesc));
+	fdesc = (FunctionDesc*) CGD_MALLOC("cgd.fdesc.s2f.1", sizeof(FunctionDesc));
 
 	ptr = VG_(strrchr)(str, '(');
 	if (ptr && (*(ptr + 1) >= '0' && *(ptr + 1) <= '9')) {
 		size = (ptr - str) / sizeof(HChar);
-		fdesc->obj_name = (HChar*) LPG_MALLOC("lg.fdesc.s2f.2", ((size + 1) * sizeof(HChar)));
+		fdesc->obj_name = (HChar*) CGD_MALLOC("cgd.fdesc.s2f.2", ((size + 1) * sizeof(HChar)));
 		VG_(strncpy)(fdesc->obj_name, str, size);
 		*(fdesc->obj_name + size) = 0;
 
 		ptr++;
-		tmp = LPG_STRDUP("lg.fdesc.s2f.3", ptr);
+		tmp = CGD_STRDUP("cgd.fdesc.s2f.3", ptr);
 		if ((ptr = VG_(strchr)(tmp, ')')))
 			*ptr = 0;
 
 		fdesc->fn_line = VG_(strtoll10)(tmp, 0);
-		LPG_FREE(tmp);
+		CGD_FREE(tmp);
 	} else {
-		fdesc->obj_name = LPG_STRDUP("lg.fdesc.s2f.4", str);
+		fdesc->obj_name = CGD_STRDUP("cgd.fdesc.s2f.4", str);
 		fdesc->fn_line = -1;
 	}
 
@@ -142,7 +171,7 @@ FunctionDesc* LPG_(str2fdesc)(const HChar* str) {
 		*ptr = 0;
 
 		ptr += 2;
-		fdesc->fn_name = LPG_STRDUP("lg.fdesc.s2f.5", ptr);
+		fdesc->fn_name = CGD_STRDUP("cgd.fdesc.s2f.5", ptr);
 	} else {
 		fdesc->fn_name = fdesc->obj_name;
 		fdesc->obj_name = 0;
@@ -151,11 +180,11 @@ FunctionDesc* LPG_(str2fdesc)(const HChar* str) {
 	return fdesc;
 }
 
-Bool LPG_(is_main_function)(FunctionDesc* fdesc) {
+Bool CGD_(is_main_function)(FunctionDesc* fdesc) {
 	return fdesc && fdesc->fn_name && VG_(strcmp)(fdesc->fn_name, main_fname) == 0;
 }
 
-Bool LPG_(compare_functions_desc)(FunctionDesc* fdesc1, FunctionDesc* fdesc2) {
+Bool CGD_(compare_functions_desc)(FunctionDesc* fdesc1, FunctionDesc* fdesc2) {
 	return (fdesc1 && fdesc2 &&
 		    !VG_(strcmp)(fdesc1->obj_name, fdesc2->obj_name) &&
 		    !VG_(strcmp)(fdesc1->fn_name, fdesc2->fn_name) &&
