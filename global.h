@@ -140,7 +140,6 @@ typedef struct _thread_info			thread_info;
 typedef struct _CFG					CFG;
 typedef struct _CfgInstrRef			CfgInstrRef;
 typedef struct _CfgNode				CfgNode;
-typedef struct _CfgNodeCache			CfgNodeCache;
 typedef struct _CfgBlock				CfgBlock;
 typedef struct _FunctionDesc			FunctionDesc;
 typedef struct _SmartHash			SmartHash;
@@ -367,27 +366,27 @@ struct _CFG {
 
 #if CFG_NODE_CACHE_SIZE > 0
 #define CFG_NODE_CACHE_INDEX(addr) (addr % CFG_NODE_CACHE_SIZE)
-struct _CfgNodeCache {
-	struct {
-		Addr addr;
 
-		struct {
-			Addr size;
-			CfgNode* dangling;
-		} block;
+typedef struct _CfgNodeBlockCache	CfgNodeBlockCache;
+struct _CfgNodeBlockCache {
+	Addr addr;
+	Addr size;
+	CfgNode* dangling;
+};
 
-		struct {
-			Bool indirect;
-		} phantom;
+typedef struct _CfgNodePhantomCache	CfgNodePhantomCache;
+struct _CfgNodePhantomCache {
+	Addr addr;
+	Bool indirect;
+};
 
-		struct {
-			Bool indirect;
-		} call;
-	} data[CFG_NODE_CACHE_SIZE];
-
-	Bool exit;
+typedef struct _CfgNodeCallCache		CfgNodeCallCache;
+struct _CfgNodeCallCache {
+	Addr addr;
+	Bool indirect;
 };
 #endif
+
 struct _CfgNode {
 	Int id;
 	enum CfgNodeType type;
@@ -403,7 +402,12 @@ struct _CfgNode {
 	} info;
 
 #if CFG_NODE_CACHE_SIZE > 0
-	CfgNodeCache* cache;
+	struct  {
+		CfgNodeBlockCache* block;     // CfgNodeBlockCache block[CFG_NODE_CACHE_SIZE];
+		CfgNodePhantomCache* phantom; // CfgNodePhantomCache phantom[CFG_NODE_CACHE_SIZE];
+		CfgNodeCallCache* call;       // CfgNodeCallCache call[CFG_NODE_CACHE_SIZE];
+		Bool exit;
+	} cache;
 #endif
 
 	Bool visited;				// mark of visited node

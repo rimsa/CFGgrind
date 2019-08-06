@@ -387,7 +387,8 @@ void LPG_(setup_bb)(BB* bb) {
 	Bool ret_without_call = False;
 	Int popcount_on_return = 1;
 #if CFG_NODE_CACHE_SIZE > 0
-	Int idx;
+	CfgNodeBlockCache* blockCache;
+	CfgNodePhantomCache* phantomCache;
 #endif
 
 	LPG_DEBUG(3, "+ setup_bb(BB %#lx)\n", bb_addr(bb));
@@ -426,10 +427,11 @@ void LPG_(setup_bb)(BB* bb) {
 		group = 0;
 		for (p = 0; p <= passed; p++) {
 #if CFG_NODE_CACHE_SIZE > 0
-			idx = CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst);
-			if (!LPG_(current_state).dangling->cache ||
-				LPG_(current_state).dangling->cache->data[idx].addr != last_bb->jmp[p].dst ||
-				LPG_(current_state).dangling->cache->data[idx].phantom.indirect != last_bb->jmp[p].indirect)
+			phantomCache = LPG_(current_state).dangling->cache.phantom ?
+					&(LPG_(current_state).dangling->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
+			if (!phantomCache ||
+					phantomCache->addr != last_bb->jmp[p].dst ||
+					phantomCache->indirect != last_bb->jmp[p].indirect)
 #endif
 				LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
 						LPG_(current_state).dangling, last_bb->jmp[p].dst,
@@ -442,11 +444,12 @@ void LPG_(setup_bb)(BB* bb) {
 				LPG_ASSERT(group == last_bb->jmp[p].group);
 
 #if CFG_NODE_CACHE_SIZE > 0
-				idx = CFG_NODE_CACHE_INDEX(last_bb->groups[group].group_addr);
-				if (LPG_(current_state).dangling->cache &&
-					LPG_(current_state).dangling->cache->data[idx].addr == last_bb->groups[group].group_addr &&
-					LPG_(current_state).dangling->cache->data[idx].block.size == last_bb->groups[group].group_size) {
-					LPG_(current_state).dangling = LPG_(current_state).dangling->cache->data[idx].block.dangling;
+				blockCache = LPG_(current_state).dangling->cache.block ?
+						&(LPG_(current_state).dangling->cache.block[CFG_NODE_CACHE_INDEX(last_bb->groups[group].group_addr)]) : 0;
+				if (blockCache &&
+						blockCache->addr == last_bb->groups[group].group_addr &&
+						blockCache->size == last_bb->groups[group].group_size) {
+					LPG_(current_state).dangling = blockCache->dangling;
 				} else {
 #endif
 					LPG_(current_state).dangling = LPG_(cfgnode_set_block)(LPG_(current_state).cfg,
@@ -461,10 +464,12 @@ void LPG_(setup_bb)(BB* bb) {
 		// that they are phantom nodes.
 		while (p <= last_bb->cjmp_count && last_bb->jmp[p].group == group) {
 #if CFG_NODE_CACHE_SIZE > 0
-			idx = CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst);
-			if (!LPG_(current_state).dangling->cache ||
-				LPG_(current_state).dangling->cache->data[idx].addr != last_bb->jmp[p].dst ||
-				LPG_(current_state).dangling->cache->data[idx].phantom.indirect != last_bb->jmp[p].indirect)
+			phantomCache = LPG_(current_state).dangling->cache.phantom ?
+					&(LPG_(current_state).dangling->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
+
+			if (!phantomCache ||
+					phantomCache->addr != last_bb->jmp[p].dst ||
+					phantomCache->indirect != last_bb->jmp[p].indirect)
 #endif
 				LPG_(cfgnode_set_phantom)(LPG_(current_state).cfg,
 						LPG_(current_state).dangling, last_bb->jmp[p].dst,
@@ -613,11 +618,12 @@ void LPG_(setup_bb)(BB* bb) {
 	LPG_(current_state).jmps_passed = 0;
 
 #if CFG_NODE_CACHE_SIZE > 0
-	idx = CFG_NODE_CACHE_INDEX(bb->groups[0].group_addr);
-	if (LPG_(current_state).dangling->cache &&
-		LPG_(current_state).dangling->cache->data[idx].addr == bb->groups[0].group_addr &&
-		LPG_(current_state).dangling->cache->data[idx].block.size == bb->groups[0].group_size) {
-		LPG_(current_state).dangling = LPG_(current_state).dangling->cache->data[idx].block.dangling;
+	blockCache = LPG_(current_state).dangling->cache.block ?
+			&(LPG_(current_state).dangling->cache.block[CFG_NODE_CACHE_INDEX(bb->groups[0].group_addr)]) : 0;
+	if (blockCache &&
+			blockCache->addr == bb->groups[0].group_addr &&
+			blockCache->size == bb->groups[0].group_size) {
+		LPG_(current_state).dangling = blockCache->dangling;
 	} else {
 #endif
 		LPG_(current_state).dangling = LPG_(cfgnode_set_block)(LPG_(current_state).cfg,

@@ -131,7 +131,7 @@ void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
     Addr ret_addr;
     CFG* callee;
 #if CFG_NODE_CACHE_SIZE > 0
-    Int idx;
+    CfgNodeCallCache* callCache;
 #endif
 
     /* Ensure a call stack of size <current_sp>+1.
@@ -157,10 +157,11 @@ void LPG_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 		LPG_(cfg_build_fdesc)(callee);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	idx = CFG_NODE_CACHE_INDEX(callee->addr);
-	if (!LPG_(current_state).dangling->cache ||
-		LPG_(current_state).dangling->cache->data[idx].addr != callee->addr ||
-		LPG_(current_state).dangling->cache->data[idx].call.indirect != from->jmp[jmp].indirect)
+	callCache = LPG_(current_state).dangling->cache.call ?
+			&(LPG_(current_state).dangling->cache.call[CFG_NODE_CACHE_INDEX(callee->addr)]) : 0;
+	if (!callCache ||
+			callCache->addr != callee->addr ||
+			callCache->indirect != from->jmp[jmp].indirect)
 #endif
 		LPG_(cfgnode_set_call)(LPG_(current_state).cfg, LPG_(current_state).dangling,
 				callee, from->jmp[jmp].indirect);
@@ -213,8 +214,7 @@ void LPG_(pop_call_stack)(Bool halt) {
 		LPG_(cfgnode_set_halt)(LPG_(current_state).cfg, LPG_(current_state).dangling);
 	} else {
 #if CFG_NODE_CACHE_SIZE > 0
-		if (!LPG_(current_state).dangling->cache ||
-			!LPG_(current_state).dangling->cache->exit)
+		if (!LPG_(current_state).dangling->cache.exit)
 #endif
 			LPG_(cfgnode_set_exit)(LPG_(current_state).cfg, LPG_(current_state).dangling);
     }
