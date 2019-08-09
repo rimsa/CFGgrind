@@ -532,7 +532,8 @@ void CGD_(setup_bb)(BB* bb) {
 	}
 
 	/* Should this jump be converted to call or pop/call ? */
-	if ((jmpkind != bjk_Return) && (jmpkind != bjk_Call) && last_bb) {
+	if (CGD_(clo).emulate_calls && last_bb &&
+			jmpkind != bjk_Return && jmpkind != bjk_Call) {
 		/* We simulate a JMP/Cont to be a CALL if
 		 * - jump is in another ELF object or section kind
 		 * - jump is to first instruction of a function (tail recursion)
@@ -585,9 +586,9 @@ void CGD_(setup_bb)(BB* bb) {
 
 	/* Handle CALL/RET */
 	if (jmpkind == bjk_Return) {
-		CGD_ASSERT(csp != 0);
-		CGD_ASSERT(popcount_on_return > 0);
-		CGD_(unwind_call_stack)(sp, popcount_on_return);
+		// If it has nothing to pop, consider it a jump.
+		if (csp != 0 && popcount_on_return > 0)
+			CGD_(unwind_call_stack)(sp, popcount_on_return);
 	} else {
 		Int unwind_count = CGD_(unwind_call_stack)(sp, 0);
 		if (unwind_count > 0) {
