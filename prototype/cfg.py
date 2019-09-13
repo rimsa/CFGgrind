@@ -4,6 +4,9 @@ from instr import *
 from group import *
 from config import *
 
+from collections import namedtuple
+Edge = namedtuple('Edge', 'src dst')
+
 class Node(object):
 	class Type(Enum):
 		ENTRY      = 1
@@ -58,7 +61,7 @@ class BasicBlock(Node):
 		return self._group.size()
 
 	def add_call(self, cfg):
-		assert(not cfg in self._calls);
+		assert (not cfg in self._calls);
 		self._calls.append(cfg)
 
 	def add_calls(self, calls):
@@ -244,31 +247,31 @@ class CFG(object):
 		return node
 
 	def add_edge(self, edge):
+		assert isinstance(edge, Edge)
 		assert not (edge in self._edges)
-		frm, to = edge
-		assert frm in self._nodes
-		assert to in self._nodes
-		if isinstance(frm, Entry):
-			assert not self.succs(frm)
+		assert edge.src in self._nodes
+		assert edge.dst in self._nodes
+		if isinstance(edge.src, Entry):
+			assert not self.succs(edge.src)
 		else:
-			isinstance(frm, BasicBlock)
-		assert not isinstance(to, Entry)
+			isinstance(edge.src, BasicBlock)
+		assert not isinstance(edge.dst, Entry)
 		self._edges.append(edge)
 		self._dirty = True
-		return to
+		return edge.dst
 
 	def succs(self, node):
-		return [ to for (frm, to) in self._edges if frm == node ]
+		return [ edge.dst for edge in self._edges if edge.src == node ]
 
 	def preds(self, node):
-		return [ frm for (frm, to) in self._edges if to == node ]
+		return [ edge.src for edge in self._edges if edge.dst == node ]
 
 	def remove_node(self, node):
 		assert node in self._nodes
 		for pred in self.preds(node):
-			self.remove_edge((pred, node))
+			self.remove_edge(Edge(pred, node))
 		for succ in self.succs(node):
-			self.remove_edge((node, succ))
+			self.remove_edge(Edge(node, succ))
 		self._nodes.remove(node)
 
 	def remove_nodes(self, nodes):
@@ -276,6 +279,7 @@ class CFG(object):
 			self.remove_node(node)
 
 	def remove_edge(self, edge):
+		assert isinstance(edge, Edge)
 		assert edge in self._edges
 		self._edges.remove(edge)
 
@@ -309,7 +313,7 @@ class CFG(object):
 		self.remove_node(old)
 		self.add_node(new)
 		for p in preds:
-			self.add_edge((p, new))
+			self.add_edge(Edge(p, new))
 		return new
 
 	def split(self, node, addr):
@@ -319,7 +323,7 @@ class CFG(object):
 		assert node.group.has_instr_with_addr(addr)
 		preds = self.preds(node)
 		for pred in preds:
-			self.remove_edge((pred, node))
+			self.remove_edge(Edge(pred, node))
 		instr = node.group.pop_leader()
 		new = BasicBlock(Group(instr))
 		self.add_node(new)
@@ -327,8 +331,8 @@ class CFG(object):
 			instr = node.group.pop_leader()
 			new.group.add_instr(instr)
 		for pred in preds:
-			self.add_edge((pred, new))
-		self.add_edge((new, node))
+			self.add_edge(Edge(pred, new))
+		self.add_edge(Edge(new, node))
 		return node
 
 	def dot(self, dangling = None):
