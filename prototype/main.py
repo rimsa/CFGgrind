@@ -61,7 +61,7 @@ def process_tail(state, instr):
 		state.callstack.push(state.current)
 
 		# Save the node with the call.
-		state.caller = state.current.dangling
+		state.pending = state.current.dangling
 
 	# For return instruction, connect dangling with the exit node if not
 	# a successor already. Later, restore the previous cfg and dangling
@@ -189,27 +189,27 @@ def process_program(state, machine):
 	# The start CFG with the first instruction address
 	# that will be executed. Set the dangling node with
 	# the entry node.
-	state.current.cfg = CFG.instance(machine.start_addr())
-	state.current.dangling = state.current.cfg.entry
+	initial = CFG.instance(machine.start_addr())
+	state.current = HeadPoint(initial, initial.entry)
 
 	write_cfg(state.current.cfg, state.current.dangling)
 
 	# The next group of instruction that will be executed.
 	for group in machine.run():
 		# Delayed discovery of the cfg.
-		if state.caller:
+		if state.pending:
 			# Delayed discovered of CFG using the address
 			# of the group leader. Set the dangling node
 			# with this CFG's entry node.
-			state.current.cfg = CFG.instance(group.leader.addr)
-			state.current.dangling = state.current.cfg.entry
+			called = CFG.instance(group.leader.addr)
 
+			# Store the cfg in the call list of the pending node.
+			if not (called in state.pending.calls):
+				state.pending.add_call(called)
+			state.pending = None
+
+			state.current = HeadPoint(called, called.entry)
 			write_cfg(state.current.cfg, state.current.dangling)
-
-			# Store the cfg in the call list of the caller node.
-			if not state.current.cfg in state.caller.calls:
-				state.caller.add_call(state.current.cfg)
-			state.caller = None
 
 		# Check if we processed this group from this dangling point.
 		idx = group.leader.addr % CACHE_SIZE
