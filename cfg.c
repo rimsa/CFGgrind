@@ -1244,7 +1244,7 @@ void phantom2block(CFG* cfg, CfgNode* node, Int new_size) {
 	cfg->stats.phantoms--;
 }
 
-CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_offset) {
+CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_offset) {
 	Addr base_addr, addr;
 	UInt bb_idx, size;
 	InstrGroupInfo group;
@@ -1256,8 +1256,8 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 #endif
 
 	CGD_ASSERT(cfg != 0);
-	CGD_ASSERT(dangling != 0);
-	CGD_ASSERT(dangling->type == CFG_ENTRY || dangling->type == CFG_BLOCK);
+	CGD_ASSERT(working != 0);
+	CGD_ASSERT(working->type == CFG_ENTRY || working->type == CFG_BLOCK);
 	CGD_ASSERT(bb != 0);
 
 	// Get the group.
@@ -1265,7 +1265,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	group = bb->groups[group_offset];
 
 #if CFG_NODE_CACHE_SIZE > 0
-	cache = cfgblock_cache(dangling, group.group_addr);
+	cache = cfgblock_cache(working, group.group_addr);
 	cache->addr = group.group_addr;
 	cache->size = group.group_size;
 #endif
@@ -1274,19 +1274,19 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 	bb_idx = group.bb_info.first_instr;
 	base_addr = bb_addr(bb);
 
-	// Current instruction reference in the dangling node,
+	// Current instruction reference in the working node,
 	// can be any from head to tail. We use it to match the
 	// instructions in the group in sequence.
 	//
 	// A null value is used to indicate that the current
 	// instruction in the group must be a successor of
-	// the dangling node. The first instruction of this
+	// the working node. The first instruction of this
 	// group must always be a successor, hence the null value.
 	curr = 0;
 
 	accumulated_size = 0;
 	while (accumulated_size < group.group_size) {
-		// If null, find the successor of the dangling that
+		// If null, find the successor of the working that
 		// matches the current instruction in the group.
 		// Create, split or transform the node if necessary.
 		if (!curr) {
@@ -1299,17 +1299,17 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 			// correctness of the algorithm (it is also covered by the next
 			// conditional statement), it is considerably faster overall
 			// to search the list first and then check the hash if necessary.
-			if ((next = get_succ_instr(cfg, dangling, addr))) {
+			if ((next = get_succ_instr(cfg, working, addr))) {
 				// The successor may be a phantom node, in this case convert to a block.
 				if (next->node->type == CFG_PHANTOM)
 					phantom2block(cfg, next->node, size);
 
-				// Use it as the new dangling node.
+				// Use it as the new working node.
 				CGD_ASSERT(ref_is_head(next));
-				dangling = next->node;
+				working = next->node;
 			// If it is not a direct successor, check if there is a instruction
 			// with this address already exists in the CFG in some block.
-			// This block will be a successor of the dangling node.
+			// This block will be a successor of the working node.
 			} else if ((next = cfg_instr_find(cfg, addr))) {
 				// If the next node is a phantom, convert to a block node.
 				if (next->node->type == CFG_PHANTOM)
@@ -1318,30 +1318,30 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 				else if (!ref_is_head(next))
 					cfgnode_split(cfg, next);
 
-				// Connect the dangling block to this and make it the current
-				// dangling node.
+				// Connect the working block to this and make it the current
+				// working node.
 				CGD_ASSERT(ref_is_head(next));
-				add_edge2nodes(cfg, dangling, next->node);
-				dangling = next->node;
+				add_edge2nodes(cfg, working, next->node);
+				working = next->node;
 			// In this case, the instruction is new and we can:
-			// (1) append it to the dangling node (if possible); or
+			// (1) append it to the working node (if possible); or
 			// (2) create a new block with it as the head instruction that
-			// will be connected to the dangling. This block will be the
-			// new dangling node.
+			// will be connected to the working. This block will be the
+			// new working node.
 			} else {
 				next = new_instr_ref(CGD_(get_instr)(addr, size));
 				// Append the instruction if possible.
-				if (bb_idx > 0 && dangling->type == CFG_BLOCK &&
-					!cfgnode_has_successors(dangling) && !cfgnode_has_calls(dangling)) {
-					CGD_ASSERT((dangling->data.block->instrs.tail->instr->addr +
-							dangling->data.block->instrs.tail->instr->size) == addr);
-					cfgnode_add_ref(cfg, dangling, next);
-				// Create a new block, connect the dangling to it and
-				// make it the new dangling node.
+				if (bb_idx > 0 && working->type == CFG_BLOCK &&
+					!cfgnode_has_successors(working) && !cfgnode_has_calls(working)) {
+					CGD_ASSERT((working->data.block->instrs.tail->instr->addr +
+							working->data.block->instrs.tail->instr->size) == addr);
+					cfgnode_add_ref(cfg, working, next);
+				// Create a new block, connect the working to it and
+				// make it the new working node.
 				} else {
 					CfgNode* node = new_cfgnode_block(cfg, next);
-					add_edge2nodes(cfg, dangling, node);
-					dangling = node;
+					add_edge2nodes(cfg, working, node);
+					working = node;
 				}
 			}
 
@@ -1351,9 +1351,9 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 
 		// Try to process the whole block if possible.
 		if (ref_is_head(curr) &&
-				((accumulated_size + dangling->data.block->size) <= group.group_size)) {
-			accumulated_size += dangling->data.block->size;
-			bb_idx += dangling->data.block->instrs.count;
+				((accumulated_size + working->data.block->size) <= group.group_size)) {
+			accumulated_size += working->data.block->size;
+			bb_idx += working->data.block->instrs.count;
 
 			curr = 0;
 		// Otherwise, process instruction by instruction in the block.
@@ -1377,16 +1377,16 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_
 
 	// If we didn't reach the end of the block, we must split it.
 	if (curr && !ref_is_tail(curr))
-		dangling = cfgnode_split(cfg, curr->next);
+		working = cfgnode_split(cfg, curr->next);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	cache->dangling = dangling;
+	cache->working = working;
 #endif
 
-	return dangling;
+	return working;
 }
 
-void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
+void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* working, Addr to,
 			BBJumpKind jmpkind, Bool indirect) {
 	CfgInstrRef* next;
 #if CFG_NODE_CACHE_SIZE > 0
@@ -1394,11 +1394,11 @@ void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 #endif
 
 	CGD_ASSERT(cfg != 0);
-	CGD_ASSERT(dangling != 0);
-	CGD_ASSERT(dangling->type == CFG_BLOCK);
+	CGD_ASSERT(working != 0);
+	CGD_ASSERT(working->type == CFG_BLOCK);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	cache = cfgphantom_cache(dangling, to);
+	cache = cfgphantom_cache(working, to);
 	cache->addr = to;
 	cache->indirect = indirect;
 #endif
@@ -1410,7 +1410,7 @@ void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 			if (indirect) {
 				// Mark the indirection and ignore the rest of code,
 				// since we won't be able to create a phantom node for it.
-				mark_indirect(cfg, dangling);
+				mark_indirect(cfg, working);
 				return;
 			}
 
@@ -1430,11 +1430,11 @@ void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 	CGD_ASSERT(indirect == False);
 
 	// Ignore the phantom node if there is a call to this address.
-	if (CGD_(cfgnode_has_call_with_addr)(dangling, to))
+	if (CGD_(cfgnode_has_call_with_addr)(working, to))
 		return;
 
 	// Get the successor if it has the leader with address "to"
-	next = get_succ_instr(cfg, dangling, to);
+	next = get_succ_instr(cfg, working, to);
 
 	// If it does not exist, take some actions.
 	if (!next) {
@@ -1454,30 +1454,30 @@ void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
 		}
 
 		// Connect the nodes.
-		add_edge2nodes(cfg, dangling, next->node);
+		add_edge2nodes(cfg, working, next->node);
 	}
 }
 
-void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirect) {
+void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* call, Bool indirect) {
 #if CFG_NODE_CACHE_SIZE > 0
 	CfgNodeCallCache* cache;
 #endif
 
 	CGD_ASSERT(cfg != 0);
-	CGD_ASSERT(dangling != 0);
-	CGD_ASSERT(dangling->type == CFG_BLOCK);
+	CGD_ASSERT(working != 0);
+	CGD_ASSERT(working->type == CFG_BLOCK);
 	CGD_ASSERT(call != 0);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	cache = cfgcall_cache(dangling, call->addr);
+	cache = cfgcall_cache(working, call->addr);
 	cache->addr = call->addr;
 	cache->indirect = indirect;
 #endif
 
 	if (indirect)
-		mark_indirect(cfg, dangling);
+		mark_indirect(cfg, working);
 
-	if (cfgnode_add_call(cfg, dangling, call)) {
+	if (cfgnode_add_call(cfg, working, call)) {
 		// If we are adding a call to a CFG that is inside main,
 		// mark the called CFG as inside main as well.
 		if (cfg->inside_main)
@@ -1485,27 +1485,27 @@ void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirec
 	}
 }
 
-CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* dangling) {
+CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working) {
 	CGD_ASSERT(cfg != 0);
-	CGD_ASSERT(dangling != 0);
-	CGD_ASSERT(dangling->type == CFG_BLOCK);
+	CGD_ASSERT(working != 0);
+	CGD_ASSERT(working->type == CFG_BLOCK);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	dangling->cache.exit = True;
+	working->cache.exit = True;
 #endif
 
 	// Add the node if it is does not exist yet.
-	add_edge2nodes(cfg, dangling, cfgnode_exit(cfg));
+	add_edge2nodes(cfg, working, cfgnode_exit(cfg));
 	return cfg->exit;
 }
 
-CfgNode* CGD_(cfgnode_set_halt)(CFG* cfg, CfgNode* dangling) {
+CfgNode* CGD_(cfgnode_set_halt)(CFG* cfg, CfgNode* working) {
 	CGD_ASSERT(cfg != 0);
-	CGD_ASSERT(dangling != 0);
-	CGD_ASSERT(dangling->type == CFG_BLOCK);
+	CGD_ASSERT(working != 0);
+	CGD_ASSERT(working->type == CFG_BLOCK);
 
 	// Add the node if it is does not exist yet.
-	add_edge2nodes(cfg, dangling, cfgnode_halt(cfg));
+	add_edge2nodes(cfg, working, cfgnode_halt(cfg));
 	return cfg->halt;
 }
 

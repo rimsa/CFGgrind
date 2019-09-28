@@ -633,8 +633,8 @@ void unwind_thread(thread_info* t) {
 	while (CGD_(current_call_stack).sp > 0)
 		CGD_(pop_call_stack)(True);
 
-	// Set the last dangling instructions to its exit node.
-	CGD_(cfgnode_set_halt)(CGD_(current_state).cfg, CGD_(current_state).dangling);
+	// Set the last working instructions to its exit node.
+	CGD_(cfgnode_set_halt)(CGD_(current_state).cfg, CGD_(current_state).working);
 
 	/* reset context and function stack for context generation */
 	CGD_(init_exec_state)(&CGD_(current_state));

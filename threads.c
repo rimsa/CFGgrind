@@ -282,7 +282,7 @@ void CGD_(init_exec_state)(exec_state* es)
   es->jmps_passed = 0;
   es->bb = 0;
   es->cfg = 0;
-  es->dangling = 0;
+  es->working = 0;
 }
 
 
@@ -393,7 +393,7 @@ exec_state* exec_state_save(void)
   es->jmps_passed  = CGD_(current_state).jmps_passed;
   es->bb           = CGD_(current_state).bb;
   es->cfg          = CGD_(current_state).cfg;
-  es->dangling     = CGD_(current_state).dangling;
+  es->working     = CGD_(current_state).working;
 
   CGD_DEBUGIF(1) {
     CGD_DEBUG(1, "  cxtinfo_save(sig %d): jmps_passed %d\n",
@@ -416,7 +416,7 @@ exec_state* exec_state_restore(void)
   CGD_(current_state).bb           = es->bb;
   CGD_(current_state).sig          = es->sig;
   CGD_(current_state).cfg          = es->cfg;
-  CGD_(current_state).dangling     = es->dangling;
+  CGD_(current_state).working     = es->working;
 
   CGD_DEBUGIF(1) {
 	CGD_DEBUG(1, "  exec_state_restore(sig %d): jmps_passed %d\n",

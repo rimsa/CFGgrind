@@ -62,7 +62,7 @@ void CGD_(init_call_stack)(call_stack* s)
 
   for(i=0; i<s->size; i++) {
 	  s->entry[i].cfg = 0;
-	  s->entry[i].dangling = 0;
+	  s->entry[i].working = 0;
   }
 }
 
@@ -114,7 +114,7 @@ void ensure_stack_size(Int i)
 
   for(i=oldsize; i<cs->size; i++) {
     cs->entry[i].cfg = 0;
-    cs->entry[i].dangling = 0;
+    cs->entry[i].working = 0;
   }
 
   CGD_(stat).call_stack_resizes++;
@@ -161,20 +161,20 @@ void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 		CGD_(cfg_build_fdesc)(callee);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	callCache = CGD_(current_state).dangling->cache.call ?
-			&(CGD_(current_state).dangling->cache.call[CFG_NODE_CACHE_INDEX(callee->addr)]) : 0;
+	callCache = CGD_(current_state).working->cache.call ?
+			&(CGD_(current_state).working->cache.call[CFG_NODE_CACHE_INDEX(callee->addr)]) : 0;
 	if (!callCache ||
 			callCache->addr != callee->addr ||
 			callCache->indirect != from->jmp[jmp].indirect)
 #endif
-		CGD_(cfgnode_set_call)(CGD_(current_state).cfg, CGD_(current_state).dangling,
+		CGD_(cfgnode_set_call)(CGD_(current_state).cfg, CGD_(current_state).working,
 				callee, from->jmp[jmp].indirect);
 
     /* put jcc on call stack */
     current_entry->sp = sp;
     current_entry->ret_addr = ret_addr;
     current_entry->cfg = CGD_(current_state).cfg;
-    current_entry->dangling = CGD_(current_state).dangling;
+    current_entry->working = CGD_(current_state).working;
 
     CGD_(current_call_stack).sp++;
 
@@ -183,14 +183,14 @@ void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
     current_entry++;
 
     current_entry->cfg = 0;
-    current_entry->dangling = 0;
+    current_entry->working = 0;
 
 	// If the parent cfg is inside main, then this CFG is inside main as well.
 	if (!CGD_(cfg_is_inside_main)(callee))
 		CGD_(cfg_set_inside_main)(callee, CGD_(cfg_is_inside_main)(CGD_(current_state).cfg));
 
     CGD_(current_state).cfg = callee;
-    CGD_(current_state).dangling = CGD_(cfg_entry_node)(callee);
+    CGD_(current_state).working = CGD_(cfg_entry_node)(callee);
 }
 
 
@@ -215,19 +215,19 @@ void CGD_(pop_call_stack)(Bool halt) {
 		CGD_(current_call_stack).sp);
 
 	if (halt) {
-		CGD_(cfgnode_set_halt)(CGD_(current_state).cfg, CGD_(current_state).dangling);
+		CGD_(cfgnode_set_halt)(CGD_(current_state).cfg, CGD_(current_state).working);
 	} else {
 #if CFG_NODE_CACHE_SIZE > 0
-		if (!CGD_(current_state).dangling->cache.exit)
+		if (!CGD_(current_state).working->cache.exit)
 #endif
-			CGD_(cfgnode_set_exit)(CGD_(current_state).cfg, CGD_(current_state).dangling);
+			CGD_(cfgnode_set_exit)(CGD_(current_state).cfg, CGD_(current_state).working);
     }
 
 	CGD_(current_state).cfg = lower_entry->cfg;
-	CGD_(current_state).dangling = lower_entry->dangling;
+	CGD_(current_state).working = lower_entry->working;
 
 	lower_entry->cfg = 0;
-	lower_entry->dangling = 0;
+	lower_entry->working = 0;
 
     CGD_(current_call_stack).sp--;
 }

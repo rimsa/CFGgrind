@@ -301,7 +301,7 @@ struct _call_entry {
 			 * is 0 on a simulated call */
 
     CFG* cfg;
-    CfgNode* dangling;
+    CfgNode* working;
 };
 
 /*
@@ -331,7 +331,7 @@ struct _exec_state {
   Int call_stack_bottom; /* Index into fn_stack */
 
   CFG* cfg;
-  CfgNode* dangling;
+  CfgNode* working;
 };
 
 enum CfgNodeType {
@@ -375,7 +375,7 @@ typedef struct _CfgNodeBlockCache	CfgNodeBlockCache;
 struct _CfgNodeBlockCache {
 	Addr addr;
 	Addr size;
-	CfgNode* dangling;
+	CfgNode* working;
 };
 
 typedef struct _CfgNodePhantomCache	CfgNodePhantomCache;
@@ -517,12 +517,12 @@ Bool CGD_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr);
 Bool CGD_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr);
 void CGD_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr);
 Bool CGD_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2);
-CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* dangling, BB* bb, Int group_offset);
-void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* dangling, Addr to,
+CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_offset);
+void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* working, Addr to,
 		BBJumpKind jmpkind, Bool indirect);
-void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* dangling, CFG* call, Bool indirect);
-CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* dangling);
-CfgNode* CGD_(cfgnode_set_halt)(CFG* cfg, CfgNode* dangling);
+void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* call, Bool indirect);
+CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working);
+CfgNode* CGD_(cfgnode_set_halt)(CFG* cfg, CfgNode* working);
 void CGD_(clean_visited_cfgnodes)(CFG* cfg);
 void CGD_(check_cfg)(CFG* cfg);
 void CGD_(fprint_cfg)(VgFile* out, CFG* cfg);

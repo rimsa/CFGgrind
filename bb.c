@@ -428,14 +428,14 @@ void CGD_(setup_bb)(BB* bb) {
 		group = 0;
 		for (p = 0; p <= passed; p++) {
 #if CFG_NODE_CACHE_SIZE > 0
-			phantomCache = CGD_(current_state).dangling->cache.phantom ?
-					&(CGD_(current_state).dangling->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
+			phantomCache = CGD_(current_state).working->cache.phantom ?
+					&(CGD_(current_state).working->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
 			if (!phantomCache ||
 					phantomCache->addr != last_bb->jmp[p].dst ||
 					phantomCache->indirect != last_bb->jmp[p].indirect)
 #endif
 				CGD_(cfgnode_set_phantom)(CGD_(current_state).cfg,
-						CGD_(current_state).dangling, last_bb->jmp[p].dst,
+						CGD_(current_state).working, last_bb->jmp[p].dst,
 						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
 
 			// Only process a new block if it is different from the previous one.
@@ -445,16 +445,16 @@ void CGD_(setup_bb)(BB* bb) {
 				CGD_ASSERT(group == last_bb->jmp[p].group);
 
 #if CFG_NODE_CACHE_SIZE > 0
-				blockCache = CGD_(current_state).dangling->cache.block ?
-						&(CGD_(current_state).dangling->cache.block[CFG_NODE_CACHE_INDEX(last_bb->groups[group].group_addr)]) : 0;
+				blockCache = CGD_(current_state).working->cache.block ?
+						&(CGD_(current_state).working->cache.block[CFG_NODE_CACHE_INDEX(last_bb->groups[group].group_addr)]) : 0;
 				if (blockCache &&
 						blockCache->addr == last_bb->groups[group].group_addr &&
 						blockCache->size == last_bb->groups[group].group_size) {
-					CGD_(current_state).dangling = blockCache->dangling;
+					CGD_(current_state).working = blockCache->working;
 				} else {
 #endif
-					CGD_(current_state).dangling = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
-							CGD_(current_state).dangling, last_bb, group);
+					CGD_(current_state).working = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
+							CGD_(current_state).working, last_bb, group);
 #if CFG_NODE_CACHE_SIZE > 0
 				}
 #endif
@@ -465,15 +465,15 @@ void CGD_(setup_bb)(BB* bb) {
 		// that they are phantom nodes.
 		while (p <= last_bb->cjmp_count && last_bb->jmp[p].group == group) {
 #if CFG_NODE_CACHE_SIZE > 0
-			phantomCache = CGD_(current_state).dangling->cache.phantom ?
-					&(CGD_(current_state).dangling->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
+			phantomCache = CGD_(current_state).working->cache.phantom ?
+					&(CGD_(current_state).working->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
 
 			if (!phantomCache ||
 					phantomCache->addr != last_bb->jmp[p].dst ||
 					phantomCache->indirect != last_bb->jmp[p].indirect)
 #endif
 				CGD_(cfgnode_set_phantom)(CGD_(current_state).cfg,
-						CGD_(current_state).dangling, last_bb->jmp[p].dst,
+						CGD_(current_state).working, last_bb->jmp[p].dst,
 						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
 
 			p++;
@@ -487,7 +487,7 @@ void CGD_(setup_bb)(BB* bb) {
 		isConditionalJump = False;
 
 		CGD_(current_state).cfg = CGD_(get_cfg)(bb->groups[0].group_addr);
-		CGD_(current_state).dangling = CGD_(cfg_entry_node)(CGD_(current_state).cfg);
+		CGD_(current_state).working = CGD_(cfg_entry_node)(CGD_(current_state).cfg);
 	}
 
 	/* Manipulate JmpKind if needed, only using BB specific info */
@@ -608,7 +608,7 @@ void CGD_(setup_bb)(BB* bb) {
 	if (delayed_push) {
 		if (call_emulation)
 			CGD_(cfgnode_remove_successor_with_addr)(CGD_(current_state).cfg,
-					CGD_(current_state).dangling, bb->groups[0].group_addr);
+					CGD_(current_state).working, bb->groups[0].group_addr);
 
 		CGD_(push_call_stack)(last_bb, passed, bb, sp);
 	}
@@ -620,16 +620,16 @@ void CGD_(setup_bb)(BB* bb) {
 	CGD_(current_state).jmps_passed = 0;
 
 #if CFG_NODE_CACHE_SIZE > 0
-	blockCache = CGD_(current_state).dangling->cache.block ?
-			&(CGD_(current_state).dangling->cache.block[CFG_NODE_CACHE_INDEX(bb->groups[0].group_addr)]) : 0;
+	blockCache = CGD_(current_state).working->cache.block ?
+			&(CGD_(current_state).working->cache.block[CFG_NODE_CACHE_INDEX(bb->groups[0].group_addr)]) : 0;
 	if (blockCache &&
 			blockCache->addr == bb->groups[0].group_addr &&
 			blockCache->size == bb->groups[0].group_size) {
-		CGD_(current_state).dangling = blockCache->dangling;
+		CGD_(current_state).working = blockCache->working;
 	} else {
 #endif
-		CGD_(current_state).dangling = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
-				CGD_(current_state).dangling, bb, 0);
+		CGD_(current_state).working = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
+				CGD_(current_state).working, bb, 0);
 #if CFG_NODE_CACHE_SIZE > 0
 	}
 #endif
