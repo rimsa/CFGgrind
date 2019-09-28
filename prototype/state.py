@@ -2,10 +2,10 @@
 
 from cfg import *
 
-class HeadPoint(object):
-	def __init__(self, cfg=None, dangling=None):
+class CurrentPair(object):
+	def __init__(self, cfg=None, working=None):
 		self.cfg = cfg
-		self.dangling = dangling
+		self.working = working
 
 	@property
 	def cfg(self):
@@ -17,24 +17,24 @@ class HeadPoint(object):
 		self._cfg = cfg
 
 	@property
-	def dangling(self):
-		return self._dangling
+	def working(self):
+		return self._working
 
-	@dangling.setter
-	def dangling(self, dangling):
-		assert (not dangling) or isinstance(dangling, Node)
-		self._dangling = dangling
+	@working.setter
+	def working(self, working):
+		assert (not working) or isinstance(working, Node)
+		self._working = working
 
 	def copy(self):
-		return HeadPoint(self.cfg, self.dangling)
+		return CurrentPair(self.cfg, self.working)
 
 
 class CallStack(object):
-	def __init__(self):
-		self._callstack = []
+	def __init__(self, cs = []):
+		self._callstack = cs
 
 	def push(self, hp):
-		assert isinstance(hp, HeadPoint)
+		assert isinstance(hp, CurrentPair)
 		self._callstack.append(hp.copy())
 
 	def pop(self):
@@ -49,10 +49,10 @@ class CallStack(object):
 
 
 class State(object):
-	def __init__(self):
-		self._current = HeadPoint()
-		self._callstack = CallStack()
-		self._pending = None
+	def __init__(self, current, cs = [], pending = None):
+		self.current = current
+		self._callstack = CallStack(cs)
+		self._pending = pending
 
 	@property
 	def current(self):
@@ -60,8 +60,10 @@ class State(object):
 
 	@current.setter
 	def current(self, current):
-		assert isinstance(current, HeadPoint)
-		self._current = current
+		if (isinstance(current, CurrentPair)):
+			self._current = current.copy();
+		else:
+			self._current = CurrentPair(current[0], current[1]);
 
 	@property
 	def callstack(self):

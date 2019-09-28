@@ -158,38 +158,6 @@ class Term(Node):
 		return "term"
 
 class CFG(object):
-	_all = {}
-
-	def __new__(cls, *args, **kwargs):
-		addr = args[0]
-		assert addr != 0
-		if addr in cls._all:
-			return cls._all[addr]
-		else:
-			instance = object.__new__(cls)
-			cls._all[addr] = instance
-			return instance
-
-	def __del__(self):
-		if (self._addr in CFG._all):
-			del CFG._all[self._addr]
-
-	@classmethod
-	def find(cls, addr):
-		if (addr in cls._all):
-			return cls._all[addr]
-
-	@classmethod
-	def instance(cls, addr):
-		cfg = cls.find(addr)
-		if not cfg:
-			cfg = CFG(addr)
-		return cfg
-
-	@classmethod
-	def all(cls):
-		return cls._all.values()
-
 	def __init__(self, addr, name = "unknown"):
 		assert addr != 0
 		self._addr = addr
@@ -293,7 +261,7 @@ class CFG(object):
 
 		return self._valid
 
-	def node_with_addr(self, addr):
+	def find_node_with_addr(self, addr):
 		for node in self.nodes:
 			if isinstance(node, BasicBlock):
 				for instr in node.group.instrs():
@@ -335,7 +303,7 @@ class CFG(object):
 		self.add_edge(Edge(new, node))
 		return node
 
-	def dot(self, dangling = None):
+	def dot(self, working = None):
 		str = "digraph \"0x%x\" {\n" % self._addr
 		str += "  label = \"0x%x (%s)\"\n" % (self._addr, self._name)
 		str += "  labelloc = \"t\"\n"
@@ -358,11 +326,11 @@ class CFG(object):
 				str += "  \"0x%x\" -> \"Unknown%d\" [style=dashed]\n" % (node.addr, unknown)
 				unknown += 1
 
-		if dangling:
-			str += "  \"dangling\" [label=\"dangling\", fillcolor=red, fontcolor=white, style=\"rounded,filled\", shape=diamond]\n"
-			str += "  \"dangling\" -> " + dangling.dot() + " [color=red]\n"
+		if working:
+			str += "  \"working\" [label=\"working\", fillcolor=red, fontcolor=white, style=\"rounded,filled\", shape=diamond]\n"
+			str += "  \"working\" -> " + working.dot() + " [color=red]\n"
 
-		str += "}"
+		str += "}\n"
 		return str
 
 	def _check(self):

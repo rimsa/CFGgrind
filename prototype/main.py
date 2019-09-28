@@ -8,10 +8,10 @@ from machine import *
 from config import *
 from state import *
 
-def write_cfg(cfg, dangling):
+def write_cfg(cfg, working):
 	global total
 	with open("cfg%03d.dot" % total, "w") as fd:
-		fd.write(cfg.dot(dangling))
+		fd.write(cfg.dot(working))
 	total = total + 1
 
 def process_tail(state, instr):
@@ -19,7 +19,7 @@ def process_tail(state, instr):
 	# will be handled in the next iteration when
 	# processing the next group.
 	if isinstance(instr.type, JumpType):
-		write_cfg(state.current.cfg, state.current.dangling)
+		write_cfg(state.current.cfg, state.current.working)
 
 	# For branch instruction, we must take into consideration
 	# the addresses of the fallthrough and jump (if direct).
@@ -33,7 +33,7 @@ def process_tail(state, instr):
 		for addr in addrs:
 				# Search for a node that contains an instruction
 				# with this address.
-				node = state.current.cfg.node_with_addr(addr)
+				node = state.current.cfg.find_node_with_addr(addr)
 
 				# If exists, node can be either phantom or basic block.
 				if node:
@@ -45,33 +45,33 @@ def process_tail(state, instr):
 				else:
 					node = state.current.cfg.add_node(Phantom(addr))
 
-				# Connect the dangling with this node if it not a
+				# Connect the working with this node if it not a
 				# successor already.
-				if not (node in state.current.cfg.succs(state.current.dangling)):
-					state.current.cfg.add_edge(Edge(state.current.dangling, node))
+				if not (node in state.current.cfg.succs(state.current.working)):
+					state.current.cfg.add_edge(Edge(state.current.working, node))
 
-		write_cfg(state.current.cfg, state.current.dangling)
+		write_cfg(state.current.cfg, state.current.working)
 
-	# For call instruction, save the current cfg with the dangling node.
+	# For call instruction, save the current cfg with the working node.
 	# Later, save the callee node and mark the CFG as nil for delayed discovery.
 	elif isinstance(instr.type, CallType):
-		write_cfg(state.current.cfg, state.current.dangling)
+		write_cfg(state.current.cfg, state.current.working)
 
-		# Append the current cfg and dangling node in the call stack.
+		# Append the current cfg and working node in the call stack.
 		state.callstack.push(state.current)
 
 		# Save the node with the call.
-		state.pending = state.current.dangling
+		state.pending = state.current.working
 
-	# For return instruction, connect dangling with the exit node if not
-	# a successor already. Later, restore the previous cfg and dangling
+	# For return instruction, connect working with the exit node if not
+	# a successor already. Later, restore the previous cfg and working
 	# from the callstack.
 	elif isinstance(instr.type, ReturnType):
-		write_cfg(state.current.cfg, state.current.dangling)
+		write_cfg(state.current.cfg, state.current.working)
 
-		# Connect dangling to the exit node if not existent.
-		if not (state.current.cfg.exit in state.current.cfg.succs(state.current.dangling)):
-			state.current.cfg.add_edge(Edge(state.current.dangling, state.current.cfg.exit))
+		# Connect working to the exit node if not existent.
+		if not (state.current.cfg.exit in state.current.cfg.succs(state.current.working)):
+			state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.exit))
 
 		write_cfg(state.current.cfg, state.current.cfg.exit)
 
@@ -82,23 +82,23 @@ def process_tail(state, instr):
 		else:
 			exit(0)
 
-	# For return instruction, connect dangling with the terminate node if not
+	# For return instruction, connect working with the terminate node if not
 	# a successor already. Do the same for all nodes in the call stack.
 	elif isinstance(instr.type, HaltType):
-		write_cfg(state.current.cfg, state.current.dangling)
+		write_cfg(state.current.cfg, state.current.working)
 
-		# Connect dangling to the terminate node if not existent.
-		if not (state.current.cfg.term in state.current.cfg.succs(state.current.dangling)):
-			state.current.cfg.add_edge(Edge(state.current.dangling, state.current.cfg.term))
+		# Connect working to the terminate node if not existent.
+		if not (state.current.cfg.term in state.current.cfg.succs(state.current.working)):
+			state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.term))
 
 		write_cfg(state.current.cfg, state.current.cfg.term)
 
-		# Connect each dangling node in the call stack with the
+		# Connect each working node in the call stack with the
 		# termination node.
 		while state.callstack:
 			state.current = state.callstack.pop()
-			if not (state.current.cfg.term in state.current.cfg.succs(state.current.dangling)):
-				state.current.cfg.add_edge(Edge(state.current.dangling, state.current.cfg.term))
+			if not (state.current.cfg.term in state.current.cfg.succs(state.current.working)):
+				state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.term))
 
 			write_cfg(state.current.cfg, state.current.cfg.term)
 
@@ -111,14 +111,14 @@ def process_tail(state, instr):
 
 	return state
 
-def process_group(cfg, dangling, group):
-	# Current instruction in the dangling node can be any,
+def process_group(cfg, working, group):
+	# Current instruction in the working node can be any,
 	# from leader to tail. We use it to match the
 	# instructions in the group in sequence.
 	#
 	# A nil value indicates that the current
 	# instruction in the group must be a successor of
-	# the dangling node. The first instruction of the
+	# the working node. The first instruction of the
 	# group must always be a successor, hence the nil value.
 	curr_instr = None
 
@@ -129,14 +129,14 @@ def process_group(cfg, dangling, group):
 		if curr_instr:
 			assert curr_instr == instr
 		# If current instruction is nil, find the successor
-		# of the dangling that matches the instruction in the group.
+		# of the working that matches the instruction in the group.
 		# Create, split or transform node if necessary.
 		else:
 			# Search if there is a node that contains an instruction
 			# with the address of the instruction.
-			node = cfg.node_with_addr(instr.addr)
+			node = cfg.find_node_with_addr(instr.addr)
 
-			# If exists, then this node is or will be a successor of the dangling node.
+			# If exists, then this node is or will be a successor of the working node.
 			if node:
 				# If it is a phantom node, transform to a basic block.
 				if isinstance(node, Phantom):
@@ -149,105 +149,110 @@ def process_group(cfg, dangling, group):
 				# The leader of this node must match the instruction.
 				assert node.group.leader == instr
 
-				# Make it a successor of the dangling not if it is not already.
-				if not (node in cfg.succs(dangling)):
-					cfg.add_edge(Edge(dangling, node))
+				# Make it a successor of the working not if it is not already.
+				if not (node in cfg.succs(working)):
+					cfg.add_edge(Edge(working, node))
 
-				# Make this node the dangling node.
-				dangling = node
+				# Make this node the working node.
+				working = node
 			# If it does not exist, the instruction is new and we can:
-			# (1) append it to the dangling node (if possible); or
+			# (1) append it to the working node (if possible); or
 			# (2) create a new block with it as the head instruction that
-			# will be connected to the dangling. This block will be the
-			# new dangling node.
+			# will be connected to the working. This block will be the
+			# new working node.
 			else:
 				# Append the instruction if possible.
 				# It must not be the first instruction in the group,
 				# the node must be a basic block without successors and calls.
-				if instr != group.leader and isinstance(dangling, BasicBlock) and \
-						(not dangling.calls) and (not cfg.succs(dangling)):
+				if instr != group.leader and isinstance(working, BasicBlock) and \
+						(not working.calls) and (not cfg.succs(working)):
 					# Since the instructions are in sequence, the instruction must come
-					# immediately after the tail of the dangling node.
-					assert (dangling.group.tail.addr + dangling.group.tail.size) == instr.addr
+					# immediately after the tail of the working node.
+					assert (working.group.tail.addr + working.group.tail.size) == instr.addr
 
 					# Add the instruction making it the new tail.
-					dangling.group.add_instr(instr)
-				# Create a new block, connect the dangling to it and
-				# make it the new dangling node.
+					working.group.add_instr(instr)
+				# Create a new block, connect the working to it and
+				# make it the new working node.
 				else:
 					node = cfg.add_node(BasicBlock(Group(instr)))
-					cfg.add_edge(Edge(dangling, node))
-					dangling = node
+					cfg.add_edge(Edge(working, node))
+					working = node
 
-		# Make the next instruction in the dangling block the current for the next iteration.
+		# Make the next instruction in the working block the current for the next iteration.
 		# It can be nil if there are no more instructions left.
-		curr_instr = dangling.group.next(instr)
+		curr_instr = working.group.next(instr)
 
-	return dangling
+	return working
 
-def process_program(state, machine):
+def process_program(mapping, machine):
 	# The start CFG with the first instruction address
-	# that will be executed. Set the dangling node with
+	# that will be executed. Set the working node with
 	# the entry node.
-	initial = CFG.instance(machine.start_addr())
-	state.current = HeadPoint(initial, initial.entry)
+	addr = machine.start_addr()
+	initial = mapping.setdefault(addr, CFG(addr))
+	state = State((initial, initial.entry), [], None)
 
-	write_cfg(state.current.cfg, state.current.dangling)
+	write_cfg(state.current.cfg, state.current.working)
 
 	# The next group of instruction that will be executed.
 	for group in machine.run():
 		# Delayed discovery of the cfg.
 		if state.pending:
 			# Delayed discovered of CFG using the address
-			# of the group leader. Set the dangling node
+			# of the group leader. Set the working node
 			# with this CFG's entry node.
-			called = CFG.instance(group.leader.addr)
+			# called = CFG.instance(group.leader.addr)
+			addr = group.leader.addr
+			called = mapping.setdefault(addr, CFG(addr))
 
 			# Store the cfg in the call list of the pending node.
 			if not (called in state.pending.calls):
 				state.pending.add_call(called)
 			state.pending = None
 
-			state.current = HeadPoint(called, called.entry)
-			write_cfg(state.current.cfg, state.current.dangling)
+			state.current = (called, called.entry)
+			write_cfg(state.current.cfg, state.current.working)
 
-		# Check if we processed this group from this dangling point.
+		# Check if we processed this group from this working point.
 		idx = group.leader.addr % CACHE_SIZE
-		cached_group, cached_dangling = state.current.dangling.cache[idx]
+		cached_group, cached_working = state.current.working.cache[idx]
 		if cached_group == group:
-			# In this case, just use the next dangling from the start.
-			state.current.dangling = cached_dangling
+			# In this case, just use the next working from the start.
+			state.current.working = cached_working
 		else:
-			# Save the dangling pointer before processing the group.
-			prev_dangling = state.current.dangling
-			# Process the group and update dangling.
-			state.current.dangling = process_group(state.current.cfg, state.current.dangling, group)
-			# Add the new dangling node to the cache.
-			prev_dangling.cache[idx] = (group, state.current.dangling)
+			# Save the working pointer before processing the group.
+			prev_working = state.current.working
+			# Process the group and update working.
+			state.current.working = process_group(state.current.cfg, state.current.working, group)
+			# Add the new working node to the cache.
+			prev_working.cache[idx] = (group, state.current.working)
 
 		# Get the last processed instruction from the group.
 		state = process_tail(state, group.tail)
 
 	# If the program didn't exit, do a gracefully exit
-	assert isinstance(state.current.dangling, BasicBlock);
+	assert isinstance(state.current.working, BasicBlock);
 
-	# Connect dangling to the exit node if not existent.
-	if not (state.current.cfg.exit in state.current.cfg.succs(state.current.dangling)):
-		state.current.cfg.add_edge(Edge(state.current.dangling, state.current.cfg.exit))
+	# Connect working to the exit node if not existent.
+	if not (state.current.cfg.exit in state.current.cfg.succs(state.current.working)):
+		state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.exit))
 
 	write_cfg(state.current.cfg, state.current.cfg.exit)
 
-	# Connect each dangling node in the call stack with the exit node.
+	# Connect each working node in the call stack with the exit node.
 	while state.callstack:
 		state.current = state.callstack.pop()
-		if not (state.current.cfg.exit in state.current.cfg.succs(state.current.dangling)):
-			state.current.cfg.add_edge(Edge(state.current.dangling, state.current.cfg.exit))
+		if not (state.current.cfg.exit in state.current.cfg.succs(state.current.working)):
+			state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.exit))
 
 		write_cfg(state.current.cfg, state.current.cfg.exit)
+
+	return mapping
 
 if len(sys.argv) != 2:
 	print("Usage: %s [Program Description]" % sys.argv[0])
 	exit(1)
 
 total = 1
-process_program(State(), Machine(sys.argv[1]))
+process_program({}, Machine(sys.argv[1]))
