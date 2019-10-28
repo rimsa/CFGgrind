@@ -249,6 +249,9 @@ void CGD_(post_signal)(ThreadId tid, Int sigNum)
     while(CGD_(current_call_stack).sp > es->call_stack_bottom)
       CGD_(pop_call_stack)(False);
 
+    // Connect the end of the signal handler to the exit node.
+    CGD_(cfgnode_set_exit)(CGD_(current_state).cfg, CGD_(current_state).working);
+
     /* restore previous context */
     es->sig = -1;
     current_states.sp--;
