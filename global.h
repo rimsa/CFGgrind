@@ -374,7 +374,7 @@ struct _CFG {
 typedef struct _CfgNodeBlockCache	CfgNodeBlockCache;
 struct _CfgNodeBlockCache {
 	Addr addr;
-	Addr size;
+	UInt size;
 	CfgNode* working;
 };
 
