@@ -371,6 +371,7 @@ void CGD_(delete_bb)(Addr addr)
 		+ (bb->cjmp_count+1) * sizeof(CJmpInfo)
 		+ bb->groups_count * sizeof(InstrGroupInfo);
 	CGD_DATA_FREE(bb, size);
+	bbs.entries--;
 }
 
 /*
