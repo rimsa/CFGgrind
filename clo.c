@@ -97,6 +97,7 @@ Bool CGD_(process_cmd_line_option)(const HChar* arg)
    }
    else if VG_STR_CLO(arg, "--cfg-dump-dir", CGD_(clo).dump_cfgs.dir) {}
    else if VG_STR_CLO(arg, "--instrs-map", CGD_(clo).instrs_map) {}
+   else if VG_STR_CLO(arg, "--mem-mappings", CGD_(clo).mem_mappings) {}
 
    else
 	   return False;
@@ -117,6 +118,7 @@ void CGD_(print_usage)(void)
 "         (can be used multiple times)\n"
 "    --cfg-dump-dir=<directory>   Directory where to dump the DOT cfgs [.]\n"
 "    --instrs-map=<f>             Instructions map (address:assembly per entry) file\n"
+"    --mem-mappings=<f>           Output file with memory mappings (bin, libs, ...)\n"
     );
 }
 

@@ -94,7 +94,8 @@ struct _CommandLineOptions {
 	  SmartList* fnames;    /* List of cfg's function names to dump */
 	  const HChar* dir;     /* Directory where to dump the cfg's */
   } dump_cfgs;
-  const HChar* instrs_map;  /* Instructions map file */
+  const HChar* instrs_map;   /* Instructions map input file */
+  const HChar* mem_mappings; /* Runtime memory mappings output file */
 
 #if CGD_ENABLE_DEBUG
   Int   verbose;

@@ -44,6 +44,7 @@
 CommandLineOptions CGD_(clo);
 Statistics CGD_(stat);
 VgFile* out_fp = 0;
+VgFile* mm_fp = 0;
 
 /* thread and signal handler specific */
 exec_state CGD_(current_state);
@@ -641,6 +642,28 @@ void unwind_thread(thread_info* t) {
 }
 
 static
+void dump_memory_mappings(VgFile* outfile) {
+	const DebugInfo* di;
+
+	CGD_ASSERT(outfile != 0);
+	for (di = VG_(next_DebugInfo)(0); di; di = VG_(next_DebugInfo)(di)) {
+		Addr addr;
+		SizeT size;
+
+		addr = VG_(DebugInfo_get_text_avma)(di);
+		if (!addr)
+			continue;
+
+		size = VG_(DebugInfo_get_text_size)(di);
+		CGD_ASSERT(size > 0);
+
+		VG_(fprintf)(outfile, "%s:0x%lx:%lu\n",
+			VG_(DebugInfo_get_filename)(di), addr, size);
+	}
+}
+
+
+static
 void cdg_print_stats(void) {
 	int BB_lookups =
 	CGD_(stat).full_debug_BBs +
@@ -697,13 +720,18 @@ void finish(void) {
 	// Always check the CFGs.
 	CGD_(forall_cfg)(CGD_(check_cfg), True);
 
-	// If there is an output file, check the cfg
-	// before dumping the file.
 	if (CGD_(clo).cfg_outfile) {
 		CGD_ASSERT(out_fp != 0);
 		CGD_(write_cfgs)(out_fp);
 		VG_(fclose)(out_fp);
 		out_fp = 0;
+	}
+
+	if (CGD_(clo).mem_mappings) {
+		CGD_ASSERT(mm_fp != 0);
+		dump_memory_mappings(mm_fp);
+		VG_(fclose)(mm_fp);
+		mm_fp = 0;
 	}
 
 	// Dump the CFG dot files.
@@ -799,7 +827,10 @@ void CGD_(post_clo_init)(void) {
 		}
 	}
 
-	// open the output file to ensure the correct output location.
+	// open the outputs file to ensure the correct directory location.
+	// ps: the executed process may chdir to another directory and
+	// relative paths may be affected.
+
 	if (CGD_(clo).cfg_outfile) {
 		out_fp = VG_(fopen)(CGD_(clo).cfg_outfile, VKI_O_WRONLY|VKI_O_TRUNC, 0);
 		if (out_fp == NULL) {
@@ -807,6 +838,15 @@ void CGD_(post_clo_init)(void) {
 					VKI_S_IRUSR|VKI_S_IWUSR);
 		}
 		CGD_ASSERT(out_fp != 0);
+	}
+
+	if (CGD_(clo).mem_mappings) {
+		mm_fp = VG_(fopen)(CGD_(clo).mem_mappings, VKI_O_WRONLY|VKI_O_TRUNC, 0);
+		if (mm_fp == NULL) {
+			mm_fp = VG_(fopen)(CGD_(clo).mem_mappings, VKI_O_CREAT|VKI_O_WRONLY,
+					VKI_S_IRUSR|VKI_S_IWUSR);
+		}
+		CGD_ASSERT(mm_fp != 0);
 	}
 
 	CGD_(init_threads)();
