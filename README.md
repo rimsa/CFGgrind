@@ -35,11 +35,11 @@ First, get the assembly instructions mapping for better CFG visualization:
 
     $ cfggrind_asmmap ./test > test.map
     $ head -n 5 test.map
-    0x4004a8:sub $0x8,%rsp
-    0x4004ac:mov 0x200b45(%rip),%rax
-    0x4004b3:test %rax,%rax
-    0x4004b6:je 00000000004004ba <_init+0x12>
-    0x4004b8:callq *%rax
+    0x4004a8:4:sub $0x8,%rsp
+    0x4004ac:7:mov 0x200b45(%rip),%rax
+    0x4004b3:3:test %rax,%rax
+    0x4004b6:2:je 00000000004004ba <_init+0x12>
+    0x4004b8:2:callq *%rax
 
 Then, use the tool to generate an output file (test.cfg) that can be used later for CFG refinements. Also, generate a DOT file for the bubble function (cfg-0xaddr.dot) with the instructions loaded from the map (test.map).
 

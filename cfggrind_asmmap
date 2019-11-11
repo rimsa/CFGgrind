@@ -1,30 +1,90 @@
 #!/bin/bash
 
 function fatal() {
-  echo "error: $@" 1>&2;
-  exit 1;
+	echo "error: $@" 1>&2;
+	exit 1;
+}
+
+function range() {
+	local program=$1;
+	local section=$2;
+
+	if [ "$os" == "Darwin" ]; then
+		local tmp=$(echo $(otool -l "${program}" 2>/dev/null | \
+			awk -v sect="$section" '\
+				/sectname/ {if ($2 == "__"sect) { enabled=1 } else { enabled=0 }} \
+				/addr|size/ {if (enabled == 1) { print $2 }\
+			}' | sed "s/^0x0*\(.*\)$/\1/"));
+	elif [ "$os" == "Linux" ]; then
+		local tmp=$(objdump -x $1 2>/dev/null | \
+			grep -i "^[[:space:]]*[[:digit:]]*[[:space:]]*\.${section}" | \
+			awk '{print $3 " " $4}' | \
+			sed "s/^0*\(.*\) 0*\(.*\)$/\2 \1/g");
+	fi
+
+	if [ -n "${tmp}" ]; then
+		start=$(echo -n $tmp | awk '{print $1}' | tr [[:lower:]] [[:upper:]]);
+		size=$(echo -n $tmp | awk '{print $2}' | tr [[:lower:]] [[:upper:]]);
+
+		echo "0x${start}:0x$(echo "obase=16;ibase=16;$start+$size" | bc -l | \
+			tr [[:upper:]] [[:lower:]])";
+	fi
+}
+
+function asm() {
+	local program=$1;
+	local section=$2;
+	local r=$(range ${program} ${section})
+	if [ -n "$r" ]; then
+		local start=${r/:*/};
+		local end=${r/*:/}
+
+		if [ "$os" == "Darwin" ]; then
+			otool -V -s __TEXT "__${section}" "${program}";
+		elif [ "$os" == "Linux" ]; then
+			objdump -d -j ".${section}" --prefix-addresses "${program}" | \
+				sed "s/[[:space:]]*<[^>]*>[[:space:]]*/ /";
+		fi |
+			egrep "^[[:digit:]abcdef]+[[:space:]]" | \
+			sed -e "s/^[[:space:]]*0*/0x/" -e "s/[[:space:]]*#.*$//" | \
+			awk -v "last=${end}" '\
+				{ \
+					naddr=tolower($1); \
+					if (NR != 1) { \
+						diff=strtonum(naddr)-strtonum(addr); \
+						printf "%s:%d:%s\n", addr, diff, asm; \
+					} \
+					\
+					addr=naddr; \
+					asm=$2; \
+					for (i=3;i<=NF;++i) \
+						asm=asm " " $i; \
+				} \
+				END { \
+					diff=strtonum(last)-strtonum(addr); \
+					printf "%s:%d:%s\n", addr, diff, asm; \
+				} \
+			';
+	fi
 }
 
 if [ $# -ne 1 ]; then
-  echo "Usage: $0 [Binary program]";
-  exit 1;
+	echo "Usage: $0 [Binary program]";
+	exit 1;
 fi
 
 [ -r "$1" ] || fatal "invalid binary program: $1";
 
 os="$(uname -s)";
+
 if [ "$os" == "Darwin" ]; then
-  otool -V -s __TEXT __text "$1" | \
-    egrep "^[[:digit:]abcdef]+[[:space:]]" |
-    cut -f1 -d"#" | \
-    sed -e "s/^[[:space:]]*0*/0x/" -e "s/[[:space:]]*$//" | \
-    awk '{printf "%s:",tolower($1); for (i=2;i<NF;++i) printf "%s ",$i;printf "%s\n",$i}'
+	sectnames="text stubs stub_helper";
 elif [ "$os" == "Linux" ]; then
-  objdump -d --prefix-addresses "$1" | \
-    egrep "^[[:digit:]abcdef]+[[:space:]]" | \
-    cut -f1 -d"#" | \
-    sed -e "s/^[[:space:]]*0*/0x/" -e "s/[[:space:]]*$//" | \
-    awk '{printf "%s:",tolower($1); for (i=3;i<NF;++i) printf "%s ",$i;printf "%s\n",$i}'
+	sectnames="init plt plt.got text fini";
 else
-  fatal "Unsupported system: $os";
+	fatal "Unsupported system: $os";
 fi
+
+for sectname in ${sectnames}; do
+	asm $1 $sectname;
+done

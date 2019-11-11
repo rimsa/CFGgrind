@@ -117,7 +117,7 @@ void CGD_(print_usage)(void)
 "		  where <name> is a function name, an address (e.g. 0xNNNNNNNN), all or none\n"
 "         (can be used multiple times)\n"
 "    --cfg-dump-dir=<directory>   Directory where to dump the DOT cfgs [.]\n"
-"    --instrs-map=<f>             Instructions map (address:assembly per entry) file\n"
+"    --instrs-map=<f>             Instructions map (address:size:assembly per entry) file\n"
 "    --mem-mappings=<f>           Output file with memory mappings (bin, libs, ...)\n"
     );
 }

@@ -78,8 +78,10 @@ HChar* next_line(Int fd) {
 static
 void read_instr_names(void) {
 	Int fd;
+	Int size;
 	Addr addr;
 	HChar* line;
+	HChar* tmp;
 	HChar* name;
 	UniqueInstr* instr;
 
@@ -89,16 +91,23 @@ void read_instr_names(void) {
 			tl_assert(0);
 
 		while ((line = next_line(fd))) {
-			name = VG_(strchr)(line, ':');
-			if (name) {
-				*name = 0;
-				name++;
+			tmp = VG_(strchr)(line, ':');
+			if (tmp == 0)
+				continue;
+			*tmp = 0;
+			++tmp;
 
-				addr = VG_(strtoull16)(line, 0);
-				if (addr != 0 && *name != 0) {
-					instr = CGD_(get_instr)(addr, 0);
-					instr->name = CGD_STRDUP("cgd.instrs.rin.1", name);
-				}
+			name = VG_(strchr)(tmp, ':');
+			if (name == 0)
+				continue;
+			*name = 0;
+			++name;
+
+			addr = VG_(strtoull16)(line, 0);
+			size = VG_(strtoll10)(tmp, 0);
+			if (addr != 0 && size > 0 && *name != 0) {
+				instr = CGD_(get_instr)(addr, size);
+				instr->name = CGD_STRDUP("cgd.instrs.rin.1", name);
 			}
 		}
 
