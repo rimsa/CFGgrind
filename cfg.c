@@ -1762,7 +1762,7 @@ void write_cfg(CFG* cfg) {
 		VG_(fprintf)(fp, "[node 0x%lx ", cfg->addr);
 
 		if (node->type == CFG_BLOCK) {
-			VG_(fprintf)(fp, "0x%lx ", node->data.block->addr);
+			VG_(fprintf)(fp, "0x%lx %d ", node->data.block->addr, node->data.block->size);
 
 			ref = node->data.block->instrs.leader;
 			CGD_ASSERT(ref != 0);
@@ -2004,7 +2004,8 @@ void CGD_(read_cfgs)(Int fd) {
 	CfgNode* node;
 	CfgInstrRef* ref;
 	Addr addr;
-	Int size;
+	Int block_size;
+	Int instr_size;
 
 	while (next_token(fd)) {
 		CGD_ASSERT(token.type == TKN_BRACKET_OPEN);
@@ -2043,21 +2044,25 @@ void CGD_(read_cfgs)(Int fd) {
 				ref = cfg_instr_find(cfg, addr);
 
 				has = next_token(fd);
+				CGD_ASSERT(has && token.type == TKN_NUMBER);
+				block_size = token.data.number;
+
+				has = next_token(fd);
 				CGD_ASSERT(has && token.type == TKN_BRACKET_OPEN);
 
 				has = next_token(fd);
 				CGD_ASSERT(has && token.type == TKN_NUMBER);
-				size = token.data.number;
+				instr_size = token.data.number;
 
 				// If the reference exists, then it must be a phantom
 				// node and we will convert it to a block node.
 				if (ref) {
 					CGD_ASSERT(ref->node->type == CFG_PHANTOM);
 					node = ref->node;
-					phantom2block(cfg, node, size);
+					phantom2block(cfg, node, instr_size);
 				// Otherwise, we will create the block node.
 				} else {
-					ref = new_instr_ref(CGD_(get_instr)(addr, size));
+					ref = new_instr_ref(CGD_(get_instr)(addr, instr_size));
 					node = new_cfgnode_block(cfg, ref);
 				}
 				CGD_ASSERT(node->type == CFG_BLOCK);
@@ -2066,24 +2071,26 @@ void CGD_(read_cfgs)(Int fd) {
 				if (addr == cfg->addr)
 					add_edge2nodes(cfg, cfg->entry, node);
 
-				addr += size;
+				addr += instr_size;
 
 				has = next_token(fd);
 				CGD_ASSERT(has);
 
 				while (token.type == TKN_NUMBER) {
-					size = token.data.number;
+					instr_size = token.data.number;
 
 					cfgnode_add_ref(cfg, node,
-							new_instr_ref(CGD_(get_instr)(addr, size)));
+							new_instr_ref(CGD_(get_instr)(addr, instr_size)));
 
-					addr += size;
+					addr += instr_size;
 
 					has = next_token(fd);
 					CGD_ASSERT(has);
 				}
 
 				CGD_ASSERT(has && token.type == TKN_BRACKET_CLOSE);
+
+				CGD_ASSERT(node->data.block->size == block_size);
 
 				has = next_token(fd);
 				CGD_ASSERT(has && token.type == TKN_BRACKET_OPEN);
