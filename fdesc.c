@@ -56,7 +56,7 @@ FunctionDesc* CGD_(new_fdesc)(Addr addr, Bool entry) {
 
 		fdesc->fn_name = CGD_STRDUP("cgd.fdesc.nf.2", tmp);
 		if (!VG_(get_linenum)(ep, addr, &(fdesc->fn_line)))
-			fdesc->fn_line = -1;
+			fdesc->fn_line = 0;
 
 		fdesc->obj_name = VG_(get_objname)(ep, addr, &tmp) ?
 								CGD_STRDUP("cgd.fdesc.nf.3", tmp) : 0;
@@ -164,7 +164,7 @@ FunctionDesc* CGD_(str2fdesc)(const HChar* str) {
 		CGD_FREE(tmp);
 	} else {
 		fdesc->obj_name = CGD_STRDUP("cgd.fdesc.s2f.4", str);
-		fdesc->fn_line = -1;
+		fdesc->fn_line = 0;
 	}
 
 	if ((ptr = VG_(strstr)(fdesc->obj_name, "::"))) {
