@@ -718,7 +718,7 @@ void finish(void) {
 	CGD_(forall_threads)(unwind_thread);
 
 	// Always check the CFGs.
-	CGD_(forall_cfg)(CGD_(check_cfg), True);
+	CGD_(forall_cfg)(CGD_(check_cfg));
 
 	if (CGD_(clo).cfg_outfile) {
 		CGD_ASSERT(out_fp != 0);
@@ -735,7 +735,7 @@ void finish(void) {
 	}
 
 	// Dump the CFG dot files.
-	CGD_(forall_cfg)(CGD_(dump_cfg), True);
+	CGD_(forall_cfg)(CGD_(dump_cfg));
 
 	CGD_(destroy_threads)();
 	CGD_(destroy_instrs_pool)();

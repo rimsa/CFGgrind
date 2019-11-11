@@ -347,7 +347,6 @@ struct _CFG {
 	Addr addr;				// CFG address
 	FunctionDesc* fdesc;		// debugging info for this CFG
 
-	Bool inside_main;		// mark the CFG as a successor of the main func
 	Bool dirty;				// true if new nodes are added during analysis
 	Bool visited;			// used to use in search algorithms
 
@@ -493,8 +492,6 @@ CFG* CGD_(get_cfg)(Addr addr);
 Addr CGD_(cfg_addr)(CFG* cfg);
 FunctionDesc* CGD_(cfg_fdesc)(CFG* cfg);
 void CGD_(cfg_build_fdesc)(CFG* cfg);
-Bool CGD_(cfg_is_inside_main)(CFG* cfg);
-void CGD_(cfg_set_inside_main)(CFG* cfg, Bool inside_main);
 Bool CGD_(cfg_is_dirty)(CFG* cfg);
 Bool CGD_(cfg_is_visited)(CFG* cfg);
 void CGD_(cfg_set_visited)(CFG* cfg, Bool visited);
@@ -531,7 +528,7 @@ void CGD_(fprint_detailed_cfg)(VgFile* out, CFG* cfg);
 void CGD_(write_cfgs)(VgFile* out_fp);
 void CGD_(read_cfgs)(Int fd);
 void CGD_(dump_cfg)(CFG* cfg);
-void CGD_(forall_cfg)(void (*func)(CFG*), Bool all);
+void CGD_(forall_cfg)(void (*func)(CFG*));
 void CGD_(clear_visited)(CFG* cfg);
 
 /* from clo.c */

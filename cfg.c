@@ -862,47 +862,6 @@ void CGD_(cfg_build_fdesc)(CFG* cfg) {
 
 	// Build the function description and update the cfg if it inside main.
 	cfg->fdesc = CGD_(new_fdesc)(cfg->addr, True);
-	if (CGD_(is_main_function)(cfg->fdesc))
-		cfg->inside_main = True;
-}
-
-Bool CGD_(cfg_is_inside_main)(CFG* cfg) {
-	return cfg ? cfg->inside_main : False;
-}
-
-static
-void mark_inside_main(CFG* cfg) {
-	Int i, size;
-
-	CGD_ASSERT(cfg != 0);
-
-	// Ignore visited CFG's.
-	if (cfg->visited)
-		return;
-
-	cfg->inside_main = True;
-	cfg->visited = True;
-
-	size = CGD_(smart_list_count)(cfg->nodes);
-	for (i = 0; i < size; i++) {
-		CfgNode* tmp = (CfgNode*) CGD_(smart_list_at)(cfg->nodes, i);
-		CGD_ASSERT(tmp != 0);
-
-		if (tmp->type == CFG_BLOCK) {
-			// If there are calls in it, mark them.
-			if (tmp->data.block->calls) {
-				Int j, size2;
-
-				size2 = CGD_(smart_list_count)(tmp->data.block->calls);
-				for (j = 0; j < size2; j++) {
-					CFG* called_cfg = (CFG*) CGD_(smart_list_at)(tmp->data.block->calls, j);
-					CGD_ASSERT(called_cfg != 0);
-
-					mark_inside_main(called_cfg);
-				}
-			}
-		}
-	}
 }
 
 static
@@ -916,24 +875,6 @@ void mark_indirect(CFG* cfg, CfgNode* node) {
 		// Account for this indirection.
 		cfg->stats.indirects++;
 	}
-}
-
-void CGD_(cfg_set_inside_main)(CFG* cfg, Bool inside_main) {
-	CGD_ASSERT(cfg != 0);
-
-	// Ignore if we already marked this CFG inside main.
-	if (cfg->inside_main) {
-		CGD_ASSERT(inside_main);
-		return;
-	}
-
-	// Ignore if we are not changing the status of the CFG.
-	if (!inside_main)
-		return;
-
-	// All the nested CFG's called from this must also be inside main.
-	CGD_(forall_cfg)(CGD_(clear_visited), True);
-	mark_inside_main(cfg);
 }
 
 Bool CGD_(cfg_is_dirty)(CFG* cfg) {
@@ -1477,12 +1418,7 @@ void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* call, Bool indirect
 	if (indirect)
 		mark_indirect(cfg, working);
 
-	if (cfgnode_add_call(cfg, working, call)) {
-		// If we are adding a call to a CFG that is inside main,
-		// mark the called CFG as inside main as well.
-		if (cfg->inside_main)
-			CGD_(cfg_set_inside_main)(call, True);
-	}
+	cfgnode_add_call(cfg, working, call);
 }
 
 CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working) {
@@ -1801,7 +1737,7 @@ void write_cfg(CFG* cfg) {
 	CGD_ASSERT(cfg != 0);
 	CGD_ASSERT(fp != 0);
 
-	VG_(fprintf)(fp, "[cfg 0x%lx %s \"", cfg->addr, (cfg->inside_main ? "true" : "false"));
+	VG_(fprintf)(fp, "[cfg 0x%lx \"", cfg->addr);
 	if (!cfg->fdesc)
 		CGD_(cfg_build_fdesc)(cfg);
 
@@ -1894,7 +1830,7 @@ void CGD_(write_cfgs)(VgFile *out_fp) {
 	CGD_ASSERT(out_fp != 0);
 
 	fp = out_fp;
-	CGD_(forall_cfg)(write_cfg, True);
+	CGD_(forall_cfg)(write_cfg);
 	fp = 0;
 }
 
@@ -2085,10 +2021,6 @@ void CGD_(read_cfgs)(Int fd) {
 				CGD_ASSERT(cfg != 0);
 
 				has = next_token(fd);
-				CGD_ASSERT(has && token.type == TKN_BOOL);
-				cfg->inside_main = token.data.bool;
-
-				has = next_token(fd);
 				CGD_ASSERT(has && token.type == TKN_TEXT);
 				cfg->fdesc = CGD_(str2fdesc)(token.text);
 
@@ -2229,7 +2161,7 @@ void CGD_(read_cfgs)(Int fd) {
 	}
 
 	// Check the CFG's
-	CGD_(forall_cfg)(CGD_(check_cfg), True);
+	CGD_(forall_cfg)(CGD_(check_cfg));
 }
 
 static
@@ -2267,7 +2199,7 @@ void CGD_(dump_cfg)(CFG* cfg) {
 	}
 }
 
-void CGD_(forall_cfg)(void (*func)(CFG*), Bool all) {
+void CGD_(forall_cfg)(void (*func)(CFG*)) {
 	UInt i;
 	CFG *cfg, *tmp;
 
@@ -2275,10 +2207,7 @@ void CGD_(forall_cfg)(void (*func)(CFG*), Bool all) {
 		cfg = cfgs.table[i];
 		while (cfg) {
 			tmp = cfg->chain;
-
-			if (all || cfg->inside_main)
-				(*func)(cfg);
-
+			(*func)(cfg);
 			cfg = tmp;
 		}
 	}

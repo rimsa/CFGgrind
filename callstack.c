@@ -185,10 +185,6 @@ void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
     current_entry->cfg = 0;
     current_entry->working = 0;
 
-	// If the parent cfg is inside main, then this CFG is inside main as well.
-	if (!CGD_(cfg_is_inside_main)(callee))
-		CGD_(cfg_set_inside_main)(callee, CGD_(cfg_is_inside_main)(CGD_(current_state).cfg));
-
     CGD_(current_state).cfg = callee;
     CGD_(current_state).working = CGD_(cfg_entry_node)(callee);
 }
