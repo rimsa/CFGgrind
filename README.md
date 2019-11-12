@@ -43,7 +43,7 @@ First, get the assembly instructions mapping for better CFG visualization:
 
 Then, use the tool to generate an output file (test.cfg) that can be used later for CFG refinements. Also, generate a DOT file for the bubble function (cfg-0xaddr.dot) with the instructions loaded from the map (test.map).
 
-    $ valgrind --tool=cfggrind --cfg-outfile=test.cfg --instrs-map=test.map --cfg-dump=bubble ./test 4 8 15 15 23 42
+    $ valgrind --tool=cfggrind --cfg-outfile=test.cfg --instrs-map=test.map --cfg-dump=bubble ./test 4 8 15 16 23 42
 
 Generate an image from the DOT file for the bubble function.
 
