@@ -2184,8 +2184,6 @@ Bool cmp_strings(HChar* str1, HChar* str2) {
 }
 
 void CGD_(dump_cfg)(CFG* cfg) {
-	VgFile* out;
-	HChar filename[256];
 	HChar* funct;
 
 	CGD_ASSERT(cfg != 0);
@@ -2197,8 +2195,25 @@ void CGD_(dump_cfg)(CFG* cfg) {
 		(CGD_(clo).dump_cfgs.fnames != 0 && funct != 0 &&
 				CGD_(smart_list_contains)(CGD_(clo).dump_cfgs.fnames, funct,
 						(Bool (*)(void*, void*)) cmp_strings))) {
-		VG_(snprintf)(filename, sizeof(filename)/sizeof(HChar),
-				"%s/cfg-0x%lx.dot", CGD_(clo).dump_cfgs.dir, cfg->addr);
+		Int size;
+		const HChar* cwd;
+		const HChar* dirname;
+		HChar* filename;
+		VgFile* out;
+
+		cwd = VG_(get_startup_wd)();
+		dirname = CGD_(clo).dump_cfgs.dir;
+		size = VG_(strlen)(dirname) + 32;
+
+		if (dirname[0] != '/' && cwd) {
+			size += VG_(strlen)(cwd);
+			filename = (HChar*) CGD_MALLOC("cgd.cfg.dcfg.1", size);
+			VG_(snprintf)(filename, size, "%s/%s/cfg-0x%lx.dot",
+				cwd, dirname, cfg->addr);
+		} else {
+			filename = (HChar*) CGD_MALLOC("cgd.cfg.dcfg.1", size);
+			VG_(snprintf)(filename, size, "%s/cfg-0x%lx.dot", dirname, cfg->addr);
+		}
 
 		out = VG_(fopen)(filename, VKI_O_WRONLY|VKI_O_TRUNC, 0);
 		if (out == NULL) {
@@ -2210,6 +2225,8 @@ void CGD_(dump_cfg)(CFG* cfg) {
 		CGD_(fprint_detailed_cfg)(out, cfg);
 
 		VG_(fclose)(out);
+
+		VG_(free)(filename);
 	}
 }
 
