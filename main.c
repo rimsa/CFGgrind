@@ -43,8 +43,6 @@
 /* for all threads */
 CommandLineOptions CGD_(clo);
 Statistics CGD_(stat);
-VgFile* out_fp = 0;
-VgFile* mm_fp = 0;
 
 /* thread and signal handler specific */
 exec_state CGD_(current_state);
@@ -642,10 +640,17 @@ void unwind_thread(thread_info* t) {
 }
 
 static
-void dump_memory_mappings(VgFile* outfile) {
+void dump_memory_mappings(const HChar* filename) {
 	const DebugInfo* di;
+	VgFile* fp;
 
-	CGD_ASSERT(outfile != 0);
+	fp = VG_(fopen)(filename, VKI_O_WRONLY|VKI_O_TRUNC, 0);
+	if (fp == NULL) {
+		fp = VG_(fopen)(filename, VKI_O_CREAT|VKI_O_WRONLY,
+				VKI_S_IRUSR|VKI_S_IWUSR);
+	}
+	CGD_ASSERT(fp != 0);
+
 	for (di = VG_(next_DebugInfo)(0); di; di = VG_(next_DebugInfo)(di)) {
 		Addr addr;
 		SizeT size;
@@ -657,9 +662,11 @@ void dump_memory_mappings(VgFile* outfile) {
 		size = VG_(DebugInfo_get_text_size)(di);
 		CGD_ASSERT(size > 0);
 
-		VG_(fprintf)(outfile, "%s:0x%lx:%lu\n",
+		VG_(fprintf)(fp, "%s:0x%lx:%lu\n",
 			VG_(DebugInfo_get_filename)(di), addr, size);
 	}
+
+	VG_(fclose)(fp);
 }
 
 
@@ -711,6 +718,7 @@ void cdg_print_stats(void) {
 
 static
 void finish(void) {
+	HChar* filename;
 	CGD_DEBUG(0, "finish()\n");
 
 	/* pop all remaining items from CallStack for correct sum
@@ -721,17 +729,17 @@ void finish(void) {
 	CGD_(forall_cfg)(CGD_(check_cfg));
 
 	if (CGD_(clo).cfg_outfile) {
-		CGD_ASSERT(out_fp != 0);
-		CGD_(write_cfgs)(out_fp);
-		VG_(fclose)(out_fp);
-		out_fp = 0;
+		filename = VG_(expand_file_name)("--cfg-outfile",
+						CGD_(clo).cfg_outfile);
+		CGD_(write_cfgs)(filename);
+		VG_(free)(filename);
 	}
 
 	if (CGD_(clo).mem_mappings) {
-		CGD_ASSERT(mm_fp != 0);
-		dump_memory_mappings(mm_fp);
-		VG_(fclose)(mm_fp);
-		mm_fp = 0;
+		filename = VG_(expand_file_name)("--mem-mappings",
+						CGD_(clo).mem_mappings);
+		dump_memory_mappings(filename);
+		VG_(free)(filename);
 	}
 
 	// Dump the CFG dot files.
@@ -825,28 +833,6 @@ void CGD_(post_clo_init)(void) {
 		} else {
 			tl_assert(CGD_(clo).ignore_failed);
 		}
-	}
-
-	// open the outputs file to ensure the correct directory location.
-	// ps: the executed process may chdir to another directory and
-	// relative paths may be affected.
-
-	if (CGD_(clo).cfg_outfile) {
-		out_fp = VG_(fopen)(CGD_(clo).cfg_outfile, VKI_O_WRONLY|VKI_O_TRUNC, 0);
-		if (out_fp == NULL) {
-			out_fp = VG_(fopen)(CGD_(clo).cfg_outfile, VKI_O_CREAT|VKI_O_WRONLY,
-					VKI_S_IRUSR|VKI_S_IWUSR);
-		}
-		CGD_ASSERT(out_fp != 0);
-	}
-
-	if (CGD_(clo).mem_mappings) {
-		mm_fp = VG_(fopen)(CGD_(clo).mem_mappings, VKI_O_WRONLY|VKI_O_TRUNC, 0);
-		if (mm_fp == NULL) {
-			mm_fp = VG_(fopen)(CGD_(clo).mem_mappings, VKI_O_CREAT|VKI_O_WRONLY,
-					VKI_S_IRUSR|VKI_S_IWUSR);
-		}
-		CGD_ASSERT(mm_fp != 0);
 	}
 
 	CGD_(init_threads)();

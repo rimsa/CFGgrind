@@ -525,7 +525,7 @@ void CGD_(clean_visited_cfgnodes)(CFG* cfg);
 void CGD_(check_cfg)(CFG* cfg);
 void CGD_(fprint_cfg)(VgFile* out, CFG* cfg);
 void CGD_(fprint_detailed_cfg)(VgFile* out, CFG* cfg);
-void CGD_(write_cfgs)(VgFile* out_fp);
+void CGD_(write_cfgs)(const HChar* filename);
 void CGD_(read_cfgs)(Int fd);
 void CGD_(dump_cfg)(CFG* cfg);
 void CGD_(forall_cfg)(void (*func)(CFG*));

@@ -110,6 +110,7 @@ void CGD_(print_usage)(void)
    VG_(printf)(
 "\n   control flow graph options:\n"
 "    --cfg-outfile=<f>            CFG output file name\n"
+"		  use %%p to bind the pid to a cfg file (e.g. cfggrind.%%p.cfg)\n"
 "    --cfg-infile=<f>             CFG input file name\n"
 "    --ignore-failed-cfg=no|yes   Ignore failed cfg input file read [no]\n"
 "    --emulate-calls=no|yes       Emulate call for jumps in function entries [yes]\n"

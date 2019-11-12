@@ -1826,11 +1826,18 @@ void write_cfg(CFG* cfg) {
 	}
 }
 
-void CGD_(write_cfgs)(VgFile *out_fp) {
-	CGD_ASSERT(out_fp != 0);
+void CGD_(write_cfgs)(const HChar* filename) {
+	CGD_ASSERT(fp == 0);
+	fp = VG_(fopen)(filename, VKI_O_WRONLY|VKI_O_TRUNC, 0);
+	if (fp == NULL) {
+		fp = VG_(fopen)(filename, VKI_O_CREAT|VKI_O_WRONLY,
+				VKI_S_IRUSR|VKI_S_IWUSR);
+	}
+	CGD_ASSERT(fp != 0);
 
-	fp = out_fp;
 	CGD_(forall_cfg)(write_cfg);
+
+	VG_(fclose)(fp);
 	fp = 0;
 }
 
