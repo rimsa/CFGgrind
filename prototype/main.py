@@ -231,22 +231,22 @@ def process_program(mapping, machine):
 		# Get the last processed instruction from the group.
 		state = process_tail(state, group.tail)
 
-	# If the program didn't exit, do a gracefully exit
+	# If the program didn't exit, mark as the stop of the program.
 	assert isinstance(state.current.working, BasicBlock);
 
-	# Connect working to the exit node if not existent.
-	if not (state.current.cfg.exit in state.current.cfg.succs(state.current.working)):
-		state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.exit))
+	# Connect working to the halt node if not existent.
+	if not (state.current.cfg.halt in state.current.cfg.succs(state.current.working)):
+		state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.halt))
 
-	write_cfg(state.current.cfg, state.current.cfg.exit)
+	write_cfg(state.current.cfg, state.current.cfg.halt)
 
-	# Connect each working node in the call stack with the exit node.
+	# Connect each working node in the call stack with the halt node.
 	while state.callstack:
 		state.current = state.callstack.pop()
-		if not (state.current.cfg.exit in state.current.cfg.succs(state.current.working)):
-			state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.exit))
+		if not (state.current.cfg.halt in state.current.cfg.succs(state.current.working)):
+			state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.halt))
 
-		write_cfg(state.current.cfg, state.current.cfg.exit)
+		write_cfg(state.current.cfg, state.current.cfg.halt)
 
 	return mapping
 
