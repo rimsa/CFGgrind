@@ -455,7 +455,7 @@ CfgNode* new_cfgnode_phantom(CFG* cfg, CfgInstrRef* ref) {
 	CGD_ASSERT(cfg != 0);
 	CGD_ASSERT(ref != 0);
 
-	node = new_cfgnode(CFG_PHANTOM, 1, 1);
+	node = new_cfgnode(CFG_PHANTOM, 0, 1);
 	cfgnode_put_phantom(cfg, node, ref);
 
 	// Add the node to the CFG.
@@ -1179,6 +1179,10 @@ void phantom2block(CFG* cfg, CfgNode* node, Int new_size) {
 	node->type = CFG_BLOCK;
 	node->data.block = new_block(ref);
 	ref->node = node;
+
+	// Add the successors list.
+	CGD_ASSERT(node->info.successors == 0);
+	node->info.successors = CGD_(new_smart_list)(2);
 
 	// Update the blocks and phantom stats.
 	cfg->stats.blocks++;
