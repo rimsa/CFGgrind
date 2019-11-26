@@ -964,7 +964,7 @@ Addr CGD_(cfgnode_addr)(CfgNode* node) {
 	}
 }
 
-Addr CGD_(cfgnode_size)(CfgNode* node) {
+Int CGD_(cfgnode_size)(CfgNode* node) {
 	CGD_ASSERT(node != 0);
 	CGD_ASSERT(node->type == CFG_BLOCK);
 

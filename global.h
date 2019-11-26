@@ -505,7 +505,7 @@ Int CGD_(cfgnode_id)(CfgNode* node);
 enum CfgNodeType CGD_(cfgnode_type)(CfgNode* node);
 const HChar* CGD_(cfgnode_type2str)(enum CfgNodeType type, Bool lowercase);
 Addr CGD_(cfgnode_addr)(CfgNode* node);
-Addr CGD_(cfgnode_size)(CfgNode* node);
+Int CGD_(cfgnode_size)(CfgNode* node);
 SmartList* CGD_(cfgnode_successors)(CfgNode* node);
 SmartList* CGD_(cfgnode_predecessors)(CfgNode* node);
 Bool CGD_(cfgnode_is_visited)(CfgNode* node);
