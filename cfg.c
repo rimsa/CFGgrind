@@ -1318,7 +1318,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 
 	// If we didn't reach the end of the block, we must split it.
 	if (curr && !ref_is_tail(curr))
-		working = cfgnode_split(cfg, curr->next);
+		working = cfgnode_split(cfg, curr);
 
 #if CFG_NODE_CACHE_SIZE > 0
 	cache->working = working;
