@@ -1276,7 +1276,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 			} else {
 				next = new_instr_ref(CGD_(get_instr)(addr, size));
 				// Append the instruction if possible.
-				if (bb_idx > 0 && working->type == CFG_BLOCK &&
+				if (bb_idx > group.bb_info.first_instr && working->type == CFG_BLOCK &&
 					!cfgnode_has_successors(working) && !cfgnode_has_calls(working)) {
 					CGD_ASSERT((working->data.block->instrs.tail->instr->addr +
 							working->data.block->instrs.tail->instr->size) == addr);
