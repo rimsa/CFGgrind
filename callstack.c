@@ -215,7 +215,9 @@ void CGD_(pop_call_stack)(Bool halt) {
 		CGD_(cfgnode_set_halt)(CGD_(current_state).cfg, CGD_(current_state).working);
 	} else {
 #if CFG_NODE_CACHE_SIZE > 0
-		if (!CGD_(current_state).working->cache.exit)
+		if (CGD_(current_state).working->cache.exit.enabled)
+			CGD_(current_state).working->cache.exit.count++;
+		else
 #endif
 			CGD_(cfgnode_set_exit)(CGD_(current_state).cfg, CGD_(current_state).working);
     }

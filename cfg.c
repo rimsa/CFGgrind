@@ -1291,6 +1291,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 	cache = cfgblock_cache(working, group.group_addr);
 	cache->addr = group.group_addr;
 	cache->size = group.group_size;
+	cache->count = 0;
 #endif
 
 	// Find the first instruction index.
@@ -1521,7 +1522,8 @@ CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working) {
 	CGD_ASSERT(working->type == CFG_BLOCK);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	working->cache.exit = True;
+	working->cache.exit.enabled = True;
+	working->cache.exit.count = 0;
 #endif
 
 	// Add the node if it is does not exist yet.
@@ -2402,3 +2404,54 @@ void CGD_(clear_visited)(CFG* cfg) {
 
 	cfg->visited = False;
 }
+
+#if CFG_NODE_CACHE_SIZE > 0
+void CGD_(cfgnode_flush_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache) {
+	UInt size;
+	CfgEdge* edge;
+
+	CGD_ASSERT(cfg != 0);
+	CGD_ASSERT(working != 0);
+	CGD_ASSERT(cache != 0);
+
+	size = 0;
+	while (size < cache->size) {
+		edge = get_succ_edge(cfg, working, (cache->addr + size));
+		CGD_ASSERT(edge != 0);
+
+		edge->count += cache->count;
+		size += CGD_(cfgnode_size)(edge->dst);
+
+		working = edge->dst;
+	}
+	CGD_ASSERT(size == cache->size);
+	CGD_ASSERT(CGD_(cfgnodes_cmp)(working, cache->working));
+}
+
+void CGD_(cfg_flush_all_counts)(CFG* cfg) {
+	Int i, j, size;
+
+	size = CGD_(smart_list_count)(cfg->nodes);
+	for (i = 0; i < size; i++) {
+		CfgNode* node;
+
+		node = (CfgNode*) CGD_(smart_list_at)(cfg->nodes, i);
+		CGD_ASSERT(node != 0);
+
+		if (node->cache.block) {
+			for (j = 0; j < CFG_NODE_CACHE_SIZE; j++) {
+				CfgNodeBlockCache* cache = &(node->cache.block[j]);
+				if (cache->count > 0)
+					CGD_(cfgnode_flush_count)(cfg, node, cache);
+			}
+		}
+
+		if (node->cache.exit.enabled && node->cache.exit.count > 0) {
+			CfgEdge* edge = find_edge(node, cfg->exit);
+			CGD_ASSERT(edge != 0);
+
+			edge->count += node->cache.exit.count;
+		}
+	}
+}
+#endif

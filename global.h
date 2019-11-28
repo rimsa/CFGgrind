@@ -65,7 +65,7 @@
 #define CGD_MICROSYSTIME 0
 
 // CFG node cache size. Use 0 to disable.
-#define CFG_NODE_CACHE_SIZE 0
+#define CFG_NODE_CACHE_SIZE 8
 
 // Chain Smart List: 1
 // Realloc Smart List: 2
@@ -374,14 +374,15 @@ struct _CFG {
 #if CFG_NODE_CACHE_SIZE > 0
 #define CFG_NODE_CACHE_INDEX(addr) (addr % CFG_NODE_CACHE_SIZE)
 
-typedef struct _CfgNodeBlockCache	CfgNodeBlockCache;
+typedef struct _CfgNodeBlockCache		CfgNodeBlockCache;
 struct _CfgNodeBlockCache {
 	Addr addr;
 	UInt size;
+	Int count;
 	CfgNode* working;
 };
 
-typedef struct _CfgNodePhantomCache	CfgNodePhantomCache;
+typedef struct _CfgNodePhantomCache		CfgNodePhantomCache;
 struct _CfgNodePhantomCache {
 	Addr addr;
 	Bool indirect;
@@ -391,6 +392,12 @@ typedef struct _CfgNodeCallCache		CfgNodeCallCache;
 struct _CfgNodeCallCache {
 	Addr addr;
 	Bool indirect;
+};
+
+typedef struct _CfgNodeExitCache		CfgNodeExitCache;
+struct _CfgNodeExitCache {
+	Bool enabled;
+	Int count;
 };
 #endif
 
@@ -413,7 +420,7 @@ struct _CfgNode {
 		CfgNodeBlockCache* block;     // CfgNodeBlockCache block[CFG_NODE_CACHE_SIZE];
 		CfgNodePhantomCache* phantom; // CfgNodePhantomCache phantom[CFG_NODE_CACHE_SIZE];
 		CfgNodeCallCache* call;       // CfgNodeCallCache call[CFG_NODE_CACHE_SIZE];
-		Bool exit;
+		CfgNodeExitCache exit;
 	} cache;
 #endif
 
@@ -539,6 +546,10 @@ void CGD_(read_cfgs)(Int fd);
 void CGD_(dump_cfg)(CFG* cfg);
 void CGD_(forall_cfg)(void (*func)(CFG*));
 void CGD_(clear_visited)(CFG* cfg);
+#if CFG_NODE_CACHE_SIZE > 0
+void CGD_(cfgnode_flush_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache);
+void CGD_(cfg_flush_all_counts)(CFG* cfg);
+#endif
 
 /* from clo.c */
 void CGD_(set_clo_defaults)(void);

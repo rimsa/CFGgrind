@@ -451,8 +451,12 @@ void CGD_(setup_bb)(BB* bb) {
 				if (blockCache &&
 						blockCache->addr == last_bb->groups[group].group_addr &&
 						blockCache->size == last_bb->groups[group].group_size) {
+					blockCache->count++;
 					CGD_(current_state).working = blockCache->working;
 				} else {
+					if (blockCache && blockCache->count > 0)
+						CGD_(cfgnode_flush_count)(CGD_(current_state).cfg,
+							CGD_(current_state).working, blockCache);
 #endif
 					CGD_(current_state).working = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
 							CGD_(current_state).working, last_bb, group);
@@ -627,8 +631,12 @@ void CGD_(setup_bb)(BB* bb) {
 	if (blockCache &&
 			blockCache->addr == bb->groups[0].group_addr &&
 			blockCache->size == bb->groups[0].group_size) {
+		blockCache->count++;
 		CGD_(current_state).working = blockCache->working;
 	} else {
+		if (blockCache && blockCache->count > 0)
+			CGD_(cfgnode_flush_count)(CGD_(current_state).cfg,
+				CGD_(current_state).working, blockCache);
 #endif
 		CGD_(current_state).working = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
 				CGD_(current_state).working, bb, 0);

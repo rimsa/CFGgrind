@@ -725,6 +725,10 @@ void finish(void) {
 	 */
 	CGD_(forall_threads)(unwind_thread);
 
+#if CFG_NODE_CACHE_SIZE > 0
+	CGD_(forall_cfg)(CGD_(cfg_flush_all_counts));
+#endif
+
 	// Always check the CFGs.
 	CGD_(forall_cfg)(CGD_(check_cfg));
 
