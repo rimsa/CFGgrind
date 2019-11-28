@@ -583,12 +583,6 @@ Bool ref_is_head(CfgInstrRef* ref) {
 	return ref == ref->node->data.block->instrs.leader;
 }
 
-static __inline__
-Bool ref_is_tail(CfgInstrRef* ref) {
-	CGD_ASSERT(ref && ref->node && ref->node->type == CFG_BLOCK);
-	return ref == ref->node->data.block->instrs.tail;
-}
-
 static
 Bool has_node_call(CfgNode* node, CFG* call) {
 	Int i, count;
@@ -1320,8 +1314,9 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 	}
 	CGD_ASSERT(accumulated_size == group.group_size);
 
-	// If we didn't reach the end of the block, we must split it.
-	if (curr && !ref_is_tail(curr))
+	// If there is a current instruction, this means we didn't reach
+	// the end of block, thus a split is required.
+	if (curr)
 		working = cfgnode_split(cfg, curr);
 
 #if CFG_NODE_CACHE_SIZE > 0
