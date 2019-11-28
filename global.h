@@ -65,7 +65,7 @@
 #define CGD_MICROSYSTIME 0
 
 // CFG node cache size. Use 0 to disable.
-#define CFG_NODE_CACHE_SIZE 8
+#define CFG_NODE_CACHE_SIZE 0
 
 // Chain Smart List: 1
 // Realloc Smart List: 2
@@ -145,6 +145,7 @@ typedef struct _thread_info			thread_info;
 typedef struct _CFG					CFG;
 typedef struct _CfgInstrRef			CfgInstrRef;
 typedef struct _CfgNode				CfgNode;
+typedef struct _CfgEdge				CfgEdge;
 typedef struct _CfgBlock				CfgBlock;
 typedef struct _FunctionDesc			FunctionDesc;
 typedef struct _SmartHash			SmartHash;
@@ -354,12 +355,14 @@ struct _CFG {
 	CfgNode* exit;			// cfg exit node (if exists).
 	CfgNode* halt;			// cfg halt node (if exists).
 	SmartList* nodes;		// SmartList<CfgNode*>
+	SmartList* edges;		// SmartList<Edge*>
 
 	struct {
 		SmartHash* refs;		// SmartHash<CfgInstrRef*>, index by instruction address
 	} cache;
 
 	struct {
+		Int execs;
 		Int blocks;
 		Int phantoms;
 		Int indirects;
@@ -415,6 +418,12 @@ struct _CfgNode {
 #endif
 
 	Bool visited;				// mark of visited node
+};
+
+struct _CfgEdge {
+	CfgNode* src;
+	CfgNode* dst;
+	Int count;
 };
 
 typedef struct _SmartValue SmartValue;

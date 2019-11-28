@@ -187,6 +187,7 @@ void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 
     CGD_(current_state).cfg = callee;
     CGD_(current_state).working = CGD_(cfg_entry_node)(callee);
+	callee->stats.execs++;
 }
 
 

@@ -489,6 +489,7 @@ void CGD_(setup_bb)(BB* bb) {
 
 		CGD_(current_state).cfg = CGD_(get_cfg)(bb->groups[0].group_addr);
 		CGD_(current_state).working = CGD_(cfg_entry_node)(CGD_(current_state).cfg);
+		CGD_(current_state).cfg->stats.execs++;
 	}
 
 	/* Manipulate JmpKind if needed, only using BB specific info */
