@@ -816,6 +816,9 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	last->next = 0;
 	pred = new_cfgnode_block(cfg, first);
 
+	// The predecessor has naturally a fallthrough to the node.
+	pred->info.has_fallthrough = True;
+
 #if ENABLE_EDGE_COUNTS
 	count = 0;
 #endif
@@ -1602,6 +1605,130 @@ void CGD_(clean_visited_cfgnodes)(CFG* cfg) {
 		CGD_ASSERT(node != 0);
 
 		node->visited = False;
+	}
+}
+
+static
+void cfgnode_merge(CFG* cfg, CfgEdge* edge) {
+	Int i, size;
+	CfgBlock* block;
+	CfgInstrRef* ref;
+
+	CGD_ASSERT(cfg != 0);
+	CGD_ASSERT(edge != 0);
+	CGD_ASSERT(edge->src->type == CFG_BLOCK && edge->dst->type == CFG_BLOCK);
+
+	block = edge->src->data.block;
+	CGD_ASSERT(block != 0);
+
+	ref = edge->dst->data.block->instrs.leader;
+	CGD_ASSERT((block->instrs.tail->instr->addr +
+		block->instrs.tail->instr->size) == ref->instr->addr);
+	block->instrs.tail->next = ref;
+
+	// Fix the reference nodes and update block count.
+	while (ref) {
+		block->size += ref->instr->size;
+		ref->node = edge->src;
+		ref = ref->next;
+	}
+
+	// Update the block instructions.
+	block->instrs.tail = edge->dst->data.block->instrs.tail;
+	block->instrs.count += edge->dst->data.block->instrs.count;
+	VG_(memset)(&(edge->dst->data.block->instrs), 0, sizeof(block->instrs));
+
+	// Move the calls.
+	if (block->calls) {
+		CGD_ASSERT(CGD_(smart_list_is_empty)(block->calls));
+		CGD_(delete_smart_list)(block->calls);
+		block->calls = 0;
+	}
+	block->calls = edge->dst->data.block->calls;
+	edge->dst->data.block->calls = 0;
+
+	// Move the indirect flag.
+	CGD_ASSERT(block->indirect == False);
+	block->indirect = edge->dst->data.block->indirect;
+	edge->dst->data.block->indirect = False;
+
+	// Move the fallthrough flag.
+	edge->src->info.has_fallthrough = edge->dst->info.has_fallthrough;
+	edge->dst->info.has_fallthrough = False;
+
+	// Move the successors of the node to its predecessor and fix edges.
+	CGD_(smart_list_clear)(edge->src->info.successors, 0);
+	size = CGD_(smart_list_count)(edge->dst->info.successors);
+	for (i = 0; i < size; i++) {
+		CfgEdge* tmp = (CfgEdge*) CGD_(smart_list_at)(edge->dst->info.successors, i);
+		CGD_ASSERT(tmp != 0);
+
+		tmp->src = edge->src;
+		CGD_(smart_list_set)(edge->dst->info.successors, i, 0);
+		CGD_(smart_list_add)(edge->src->info.successors, tmp);
+	}
+
+	// Remove edge.
+	CGD_ASSERT(CGD_(smart_list_count)(edge->dst->info.predecessors) == 1);
+	CGD_(smart_list_clear)(edge->dst->info.predecessors, 0);
+	size = CGD_(smart_list_count)(cfg->edges);
+	for (i = 0; i < size; i++) {
+		CfgEdge* tmp = (CfgEdge*) CGD_(smart_list_at)(cfg->edges, i);
+		CGD_ASSERT(tmp != 0);
+
+		if (tmp == edge) {
+			CGD_(smart_list_set)(cfg->edges, i, CGD_(smart_list_tail)(cfg->edges));
+			CGD_(smart_list_set)(cfg->edges, (size - 1), 0);
+			break;
+		}
+	}
+	CGD_ASSERT(i < size);
+
+	// Remove node.
+	size = CGD_(smart_list_count)(cfg->nodes);
+	for (i = 0; i < size; i++) {
+		CfgNode* tmp = (CfgNode*) CGD_(smart_list_at)(cfg->nodes, i);
+		CGD_ASSERT(tmp != 0);
+
+		if (tmp == edge->dst) {
+			CGD_(smart_list_set)(cfg->nodes, i, CGD_(smart_list_tail)(cfg->nodes));
+			CGD_(smart_list_set)(cfg->nodes, (size - 1), 0);
+			break;
+		}
+	}
+	CGD_ASSERT(i < size);
+
+	// Free the resources.
+	cfg->stats.blocks--;
+	delete_cfgnode(edge->dst);
+	delete_cfgedge(edge);
+}
+
+void CGD_(fix_cfg)(CFG* cfg) {
+	Int i, size;
+
+	i = 0;
+	size = CGD_(smart_list_count)(cfg->nodes);
+	while (i < size) {
+		CfgNode* node = (CfgNode*) CGD_(smart_list_at)(cfg->nodes, i);
+		CGD_ASSERT(node != 0);
+
+		// Check if it can be merged.
+		if (node->type == CFG_BLOCK &&
+			CGD_(smart_list_count)(node->info.predecessors) == 1) {
+			CfgEdge* edge = (CfgEdge*) CGD_(smart_list_head)(node->info.predecessors);
+			CGD_ASSERT(edge != 0);
+
+			if (edge->src->type == CFG_BLOCK && edge->src->info.has_fallthrough &&
+				CGD_(smart_list_count)(edge->src->info.successors) == 1) {
+				cfgnode_merge(cfg, edge);
+
+				--size;
+				continue;
+			}
+		}
+
+		i++;
 	}
 }
 

@@ -290,6 +290,7 @@ static IRSB* CGD_(instrument)(VgCallbackClosure* closure, IRSB* sbIn,
 	InstrGroupInfo* curr_group = NULL;
 	CDG_State cdgs;
 	UInt cJumps = 0;
+	Int instr_stmt_count = 0;
 
 	if (gWordTy != hWordTy) {
 		/* We don't currently support this case. */
@@ -335,6 +336,8 @@ static IRSB* CGD_(instrument)(VgCallbackClosure* closure, IRSB* sbIn,
 		st = sbIn->stmts[i];
 		CGD_ASSERT(isFlatIRStmt(st));
 
+		++instr_stmt_count;
+
 		switch (st->tag) {
 		case Ist_NoOp:
 		case Ist_AbiHint:
@@ -377,6 +380,8 @@ static IRSB* CGD_(instrument)(VgCallbackClosure* closure, IRSB* sbIn,
 				curr_group->instr_count++;
 				curr_group->bb_info.last_instr = (cdgs.ii_index - 1);
 			}
+
+			instr_stmt_count = 0;
 
 			break;
 		}
@@ -555,10 +560,15 @@ static IRSB* CGD_(instrument)(VgCallbackClosure* closure, IRSB* sbIn,
 		} else {
 			jk = bjk_Jump;
 
-			// If the jump is not indirect, find the destination address.
+			// Find the destination address only if the jump is direct.
 			if (!indirect) {
 				dst = IRConst2Addr(sbIn->next->Iex.Const.con);
-				if (dst == origAddr + cdgs.instr_offset)
+
+				// The jump is actually a fallthrough if:
+				// (1) the destination address matches the next instruction;
+				// (2) the last instruction has statements (thus, it is not a
+				// jump instruction)
+				if ((dst == origAddr + cdgs.instr_offset) && instr_stmt_count > 0)
 					jk = bjk_None;
 			}
 		}
@@ -728,6 +738,9 @@ void finish(void) {
 #if ENABLE_EDGE_COUNTS && CFG_NODE_CACHE_SIZE > 0
 	CGD_(forall_cfg)(CGD_(cfg_flush_all_counts));
 #endif
+
+	// Fix CFG if possible.
+	CGD_(forall_cfg)(CGD_(fix_cfg));
 
 	// Always check the CFGs.
 	CGD_(forall_cfg)(CGD_(check_cfg));

@@ -625,11 +625,7 @@ void CGD_(setup_bb)(BB* bb) {
 		CGD_(push_call_stack)(last_bb, passed, bb, sp);
 	}
 
-	CGD_(current_state).bb = bb;
-	/* Even though this will be set in instrumented code directly before
-	 * side exits, it needs to be set to 0 here in case an exception
-	 * happens in first instructions of the BB */
-	CGD_(current_state).jmps_passed = 0;
+	CGD_(current_state).working->info.has_fallthrough |= (jmpkind == bjk_None);
 
 #if CFG_NODE_CACHE_SIZE > 0
 	blockCache = CGD_(current_state).working->cache.block ?
@@ -653,6 +649,12 @@ void CGD_(setup_bb)(BB* bb) {
 #if CFG_NODE_CACHE_SIZE > 0
 	}
 #endif
+
+	CGD_(current_state).bb = bb;
+	/* Even though this will be set in instrumented code directly before
+	 * side exits, it needs to be set to 0 here in case an exception
+	 * happens in first instructions of the BB */
+	CGD_(current_state).jmps_passed = 0;
 
 	CGD_DEBUG(3,
 			"- setup_bb (BB %#lx): Instrs %u (Len %u)\n",

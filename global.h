@@ -423,6 +423,7 @@ struct _CfgNode {
 	} data;
 
 	struct {
+		Bool has_fallthrough;
 		SmartList* successors;   /* SmartList<CfgNode*> */
 		SmartList* predecessors; /* SmartList<CfgNode*> */
 	} info;
@@ -552,6 +553,7 @@ void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* call, Bool indirect
 CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working);
 CfgNode* CGD_(cfgnode_set_halt)(CFG* cfg, CfgNode* working);
 void CGD_(clean_visited_cfgnodes)(CFG* cfg);
+void CGD_(fix_cfg)(CFG* cfg);
 void CGD_(check_cfg)(CFG* cfg);
 void CGD_(fprint_cfg)(VgFile* out, CFG* cfg);
 void CGD_(fprint_detailed_cfg)(VgFile* out, CFG* cfg);
