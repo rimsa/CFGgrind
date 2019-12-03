@@ -64,6 +64,9 @@
  * (define to 0 if you get compile errors) */
 #define CGD_MICROSYSTIME 0
 
+// Enable edge counts. Use 0 to disable.
+#define ENABLE_EDGE_COUNTS  1
+
 // CFG node cache size. Use 0 to disable.
 #define CFG_NODE_CACHE_SIZE 8
 
@@ -87,7 +90,9 @@ struct _CommandLineOptions {
   const HChar* cfg_outfile;
   const HChar* cfg_infile;
   Bool ignore_failed;       /* Ignored failed CFG read */
+#if ENABLE_EDGE_COUNTS
   Bool load_edge_counts;    /* Load edge counts */
+#endif
   Bool emulate_calls;       /* Emulate calls for some jumps */
   struct {
 	  Bool all;             /* Dump all cfgs */
@@ -363,10 +368,12 @@ struct _CFG {
 	} cache;
 
 	struct {
-		ULong execs;
 		Int blocks;
 		Int phantoms;
 		Int indirects;
+#if ENABLE_EDGE_COUNTS
+		ULong execs;
+#endif
 	} stats;
 
 	CFG* chain;				// entry chain in hash
@@ -379,7 +386,9 @@ typedef struct _CfgNodeBlockCache		CfgNodeBlockCache;
 struct _CfgNodeBlockCache {
 	Addr addr;
 	UInt size;
+#if ENABLE_EDGE_COUNTS
 	ULong count;
+#endif
 	CfgNode* working;
 };
 
@@ -398,7 +407,9 @@ struct _CfgNodeCallCache {
 typedef struct _CfgNodeExitCache		CfgNodeExitCache;
 struct _CfgNodeExitCache {
 	Bool enabled;
+#if ENABLE_EDGE_COUNTS
 	ULong count;
+#endif
 };
 #endif
 
@@ -431,7 +442,9 @@ struct _CfgNode {
 struct _CfgEdge {
 	CfgNode* src;
 	CfgNode* dst;
+#if ENABLE_EDGE_COUNTS
 	ULong count;
+#endif
 };
 
 typedef struct _SmartValue SmartValue;
@@ -547,7 +560,7 @@ void CGD_(read_cfgs)(Int fd);
 void CGD_(dump_cfg)(CFG* cfg);
 void CGD_(forall_cfg)(void (*func)(CFG*));
 void CGD_(clear_visited)(CFG* cfg);
-#if CFG_NODE_CACHE_SIZE > 0
+#if ENABLE_EDGE_COUNTS && CFG_NODE_CACHE_SIZE > 0
 void CGD_(cfgnode_flush_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache);
 void CGD_(cfg_flush_all_counts)(CFG* cfg);
 #endif

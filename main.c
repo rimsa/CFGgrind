@@ -725,7 +725,7 @@ void finish(void) {
 	 */
 	CGD_(forall_threads)(unwind_thread);
 
-#if CFG_NODE_CACHE_SIZE > 0
+#if ENABLE_EDGE_COUNTS && CFG_NODE_CACHE_SIZE > 0
 	CGD_(forall_cfg)(CGD_(cfg_flush_all_counts));
 #endif
 
