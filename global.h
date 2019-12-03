@@ -87,6 +87,7 @@ struct _CommandLineOptions {
   const HChar* cfg_outfile;
   const HChar* cfg_infile;
   Bool ignore_failed;       /* Ignored failed CFG read */
+  Bool load_edge_counts;    /* Load edge counts */
   Bool emulate_calls;       /* Emulate calls for some jumps */
   struct {
 	  Bool all;             /* Dump all cfgs */

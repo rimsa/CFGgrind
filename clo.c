@@ -61,6 +61,7 @@ Bool CGD_(process_cmd_line_option)(const HChar* arg)
    else if VG_STR_CLO(arg, "--cfg-outfile", CGD_(clo).cfg_outfile) {}
    else if VG_STR_CLO(arg, "--cfg-infile", CGD_(clo).cfg_infile) {}
    else if VG_BOOL_CLO(arg, "--ignore-failed-cfg", CGD_(clo).ignore_failed) {}
+   else if VG_BOOL_CLO(arg, "--load-edge-counts", CGD_(clo).load_edge_counts) {}
    else if VG_BOOL_CLO(arg, "--emulate-calls", CGD_(clo).emulate_calls) {}
    else if VG_STR_CLO(arg, "--cfg-dump", tmp_str) {
 	   if (VG_(strcmp)(tmp_str, "all") == 0) {
@@ -113,6 +114,7 @@ void CGD_(print_usage)(void)
 "		  use %%p to bind the pid to a cfg file (e.g. cfggrind.%%p.cfg)\n"
 "    --cfg-infile=<f>             CFG input file name\n"
 "    --ignore-failed-cfg=no|yes   Ignore failed cfg input file read [no]\n"
+"    --load-edge-counts=no|yes    Load edge counts from input file [yes]\n"
 "    --emulate-calls=no|yes       Emulate call for jumps in function entries [yes]\n"
 "    --cfg-dump=<name>            Dump DOT cfg file as cfg-<name>.dot [none]\n"
 "		  where <name> is a function name, an address (e.g. 0xNNNNNNNN), all or none\n"
@@ -147,6 +149,7 @@ void CGD_(set_clo_defaults)(void)
   CGD_(clo).cfg_outfile      = 0;
   CGD_(clo).cfg_infile       = 0;
   CGD_(clo).ignore_failed    = False;
+  CGD_(clo).load_edge_counts = True;
   CGD_(clo).emulate_calls    = True;
   CGD_(clo).dump_cfgs.all    = False;
   CGD_(clo).dump_cfgs.addrs  = 0;

@@ -2162,7 +2162,8 @@ void CGD_(read_cfgs)(Int fd) {
 				if (token.type == TKN_COLON) {
 					has = next_token(fd);
 					CGD_ASSERT(has && token.type == TKN_NUMBER);
-					cfg->stats.execs = token.data.number;
+					if (CGD_(clo).load_edge_counts)
+						cfg->stats.execs = token.data.number;
 
 					has = next_token(fd);
 					CGD_ASSERT(has);
@@ -2310,7 +2311,8 @@ void CGD_(read_cfgs)(Int fd) {
 					if (token.type == TKN_COLON) {
 						has = next_token(fd);
 						CGD_ASSERT(has && token.type == TKN_NUMBER);
-						count = token.data.number;
+						if (CGD_(clo).load_edge_counts)
+							count = token.data.number;
 
 						has = next_token(fd);
 						CGD_ASSERT(has);
