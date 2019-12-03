@@ -74,7 +74,7 @@ struct {
 
 	union {
 		Addr addr;
-		Int number;
+		ULong number;
 		Bool bool;
 	} data;
 
@@ -236,7 +236,7 @@ CfgEdge* find_edge(CfgNode* src, CfgNode* dst) {
 }
 
 static
-Bool add_edge2nodes(CFG* cfg, CfgNode* src, CfgNode* dst, Int count) {
+Bool add_edge2nodes(CFG* cfg, CfgNode* src, CfgNode* dst, ULong count) {
 	CfgEdge* edge = find_edge(src, dst);
 	if (edge) {
 		edge->count += count;
@@ -770,7 +770,8 @@ CfgInstrRef* cfg_instr_find(CFG* cfg, Addr addr) {
 
 static
 CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
-	Int i, count, size;
+	Int i, size;
+	ULong count;
 	CfgNode* node;
 	CfgNode* pred;
 	CfgInstrRef* first;
@@ -1558,7 +1559,7 @@ void CGD_(clean_visited_cfgnodes)(CFG* cfg) {
 void CGD_(check_cfg)(CFG* cfg) {
 	Int i, j, size, size2;
 	Int indirects;
-	Int leaving;
+	ULong leaving;
 
 	CGD_ASSERT(cfg != 0);
 	CGD_ASSERT(cfg->exit != 0 || cfg->halt != 0);
@@ -1569,7 +1570,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 	for (i = 0; i < size; i++) {
 		struct {
 			int size;
-			int count;
+			ULong count;
 		} in, out;
 		CfgNode* node;
 		CfgEdge* edge;
@@ -1835,7 +1836,7 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 		else
 			VG_(fprintf)(out, "\"0x%lx\"", CGD_(cfgnode_addr)(edge->dst));
 
-		VG_(fprintf)(out, " [label=\" %d\"]\n", edge->count);
+		VG_(fprintf)(out, " [label=\" %llu\"]\n", edge->count);
 	}
 
 	VG_(fprintf)(out, "}\n");
@@ -1862,7 +1863,7 @@ void write_cfg(CFG* cfg) {
 
 	VG_(fprintf)(fp, "[cfg 0x%lx", cfg->addr);
 	if (cfg->stats.execs > 0)
-		VG_(fprintf)(fp, ":%d", cfg->stats.execs);
+		VG_(fprintf)(fp, ":%llu", cfg->stats.execs);
 	VG_(fprintf)(fp, " \"");
 
 	if (cfg->fdesc)
@@ -1942,7 +1943,7 @@ void write_cfg(CFG* cfg) {
 			}
 
 			if (edge->count > 0)
-				VG_(fprintf)(fp, ":%d", edge->count);
+				VG_(fprintf)(fp, ":%llu", edge->count);
 		}
 		VG_(fprintf)(fp, "]");
 
@@ -2062,7 +2063,7 @@ Bool next_token(Int fd) {
 					token.text[idx++] = c;
 					state = 4;
 				} else {
-					token.data.number = VG_(strtoll10)(token.text, 0);
+					token.data.number = VG_(strtoull10)(token.text, 0);
 
 					if (c != -1)
 						last = c;
@@ -2274,7 +2275,7 @@ void CGD_(read_cfgs)(Int fd) {
 					   token.type == TKN_HALT ||
 					   token.type == TKN_ADDR) {
 					CfgNode* dst = 0;
-					Int count = 0;
+					ULong count = 0;
 
 					switch (token.type) {
 						case TKN_EXIT:

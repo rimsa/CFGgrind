@@ -362,7 +362,7 @@ struct _CFG {
 	} cache;
 
 	struct {
-		Int execs;
+		ULong execs;
 		Int blocks;
 		Int phantoms;
 		Int indirects;
@@ -378,7 +378,7 @@ typedef struct _CfgNodeBlockCache		CfgNodeBlockCache;
 struct _CfgNodeBlockCache {
 	Addr addr;
 	UInt size;
-	Int count;
+	ULong count;
 	CfgNode* working;
 };
 
@@ -397,7 +397,7 @@ struct _CfgNodeCallCache {
 typedef struct _CfgNodeExitCache		CfgNodeExitCache;
 struct _CfgNodeExitCache {
 	Bool enabled;
-	Int count;
+	ULong count;
 };
 #endif
 
@@ -430,7 +430,7 @@ struct _CfgNode {
 struct _CfgEdge {
 	CfgNode* src;
 	CfgNode* dst;
-	Int count;
+	ULong count;
 };
 
 typedef struct _SmartValue SmartValue;
