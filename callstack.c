@@ -187,7 +187,7 @@ void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 
     CGD_(current_state).cfg = callee;
     CGD_(current_state).working = CGD_(cfg_entry_node)(callee);
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	callee->stats.execs++;
 #endif
 }
@@ -218,7 +218,7 @@ void CGD_(pop_call_stack)(Bool halt) {
 	} else {
 #if CFG_NODE_CACHE_SIZE > 0
 		if (CGD_(current_state).working->cache.exit.enabled) {
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 			CGD_(current_state).working->cache.exit.count++;
 #endif
 		} else

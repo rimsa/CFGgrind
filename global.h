@@ -64,8 +64,8 @@
  * (define to 0 if you get compile errors) */
 #define CGD_MICROSYSTIME 0
 
-// Enable edge counts. Use 0 to disable.
-#define ENABLE_EDGE_COUNTS  1
+// Enable profiling. Use 0 to disable.
+#define ENABLE_PROFILING  1
 
 // CFG node cache size. Use 0 to disable.
 #define CFG_NODE_CACHE_SIZE 8
@@ -90,8 +90,8 @@ struct _CommandLineOptions {
   const HChar* cfg_outfile;
   const HChar* cfg_infile;
   Bool ignore_failed;       /* Ignored failed CFG read */
-#if ENABLE_EDGE_COUNTS
-  Bool load_edge_counts;    /* Load edge counts */
+#if ENABLE_PROFILING
+  Bool ignore_profiling;    /* Ignore profiling information from input */
 #endif
   Bool emulate_calls;       /* Emulate calls for some jumps */
   struct {
@@ -371,7 +371,7 @@ struct _CFG {
 		Int blocks;
 		Int phantoms;
 		Int indirects;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		ULong execs;
 #endif
 	} stats;
@@ -386,7 +386,7 @@ typedef struct _CfgNodeBlockCache		CfgNodeBlockCache;
 struct _CfgNodeBlockCache {
 	Addr addr;
 	UInt size;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	ULong count;
 #endif
 	CfgNode* working;
@@ -407,7 +407,7 @@ struct _CfgNodeCallCache {
 typedef struct _CfgNodeExitCache		CfgNodeExitCache;
 struct _CfgNodeExitCache {
 	Bool enabled;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	ULong count;
 #endif
 };
@@ -443,7 +443,7 @@ struct _CfgNode {
 struct _CfgEdge {
 	CfgNode* src;
 	CfgNode* dst;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	ULong count;
 #endif
 };
@@ -562,7 +562,7 @@ void CGD_(read_cfgs)(Int fd);
 void CGD_(dump_cfg)(CFG* cfg);
 void CGD_(forall_cfg)(void (*func)(CFG*));
 void CGD_(clear_visited)(CFG* cfg);
-#if ENABLE_EDGE_COUNTS && CFG_NODE_CACHE_SIZE > 0
+#if ENABLE_PROFILING && CFG_NODE_CACHE_SIZE > 0
 void CGD_(cfgnode_flush_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache);
 void CGD_(cfg_flush_all_counts)(CFG* cfg);
 #endif

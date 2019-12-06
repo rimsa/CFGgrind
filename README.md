@@ -2,7 +2,7 @@
 
 CFGgrind is a valgrind plugin to reconstruct control flow graphs (CFGs) dynamically by following the execution of binary programs.
 This tools allows successive CFGs refinements by supporting multiple executions with different inputs.
-We support edge counts and multi-thread programs.
+We use profiling for edge counts and multi-thread programs.
 
 ## Building
 
@@ -62,9 +62,9 @@ Since the list used in the arguments was ordered, there is a phantom node for th
 </p>
 
 Use the same reference input (test.cfg) in a new execution with an unordered list as argument.
-Ignore the edge counts of the previous run (--load-edge-counts=no) to account only the edges of the next execution.
+Ignore the profiling information of the previous run to account only profiling for the next execution.
 
-    $ valgrind --tool=cfggrind --cfg-infile=test.cfg --cfg-outfile=test.cfg --instrs-map=test.map --load-edge-counts=no --cfg-dump=bubble ./test 15 4 8 42 16 23
+    $ valgrind --tool=cfggrind --cfg-infile=test.cfg --cfg-outfile=test.cfg --instrs-map=test.map --ignore-profiling=yes --cfg-dump=bubble ./test 15 4 8 42 16 23
 
 Update the image with the complete CFG now.
 

@@ -451,16 +451,16 @@ void CGD_(setup_bb)(BB* bb) {
 				if (blockCache &&
 						blockCache->addr == last_bb->groups[group].group_addr &&
 						blockCache->size == last_bb->groups[group].group_size) {
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 					blockCache->count++;
-#endif // ENABLE_EDGE_COUNTS
+#endif // ENABLE_PROFILING
 					CGD_(current_state).working = blockCache->working;
 				} else {
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 					if (blockCache && blockCache->count > 0)
 						CGD_(cfgnode_flush_count)(CGD_(current_state).cfg,
 							CGD_(current_state).working, blockCache);
-#endif // ENABLE_EDGE_COUNTS
+#endif // ENABLE_PROFILING
 #endif // CFG_NODE_CACHE_SIZE
 					CGD_(current_state).working = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
 							CGD_(current_state).working, last_bb, group);
@@ -497,7 +497,7 @@ void CGD_(setup_bb)(BB* bb) {
 
 		CGD_(current_state).cfg = CGD_(get_cfg)(bb->groups[0].group_addr);
 		CGD_(current_state).working = CGD_(cfg_entry_node)(CGD_(current_state).cfg);
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		CGD_(current_state).cfg->stats.execs++;
 #endif
 	}
@@ -633,16 +633,16 @@ void CGD_(setup_bb)(BB* bb) {
 	if (blockCache &&
 			blockCache->addr == bb->groups[0].group_addr &&
 			blockCache->size == bb->groups[0].group_size) {
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		blockCache->count++;
-#endif // ENABLE_EDGE_COUNTS
+#endif // ENABLE_PROFILING
 		CGD_(current_state).working = blockCache->working;
 	} else {
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		if (blockCache && blockCache->count > 0)
 			CGD_(cfgnode_flush_count)(CGD_(current_state).cfg,
 				CGD_(current_state).working, blockCache);
-#endif // ENABLE_EDGE_COUNTS
+#endif // ENABLE_PROFILING
 #endif // CFG_NODE_CACHE_SIZE
 		CGD_(current_state).working = CGD_(cfgnode_set_block)(CGD_(current_state).cfg,
 				CGD_(current_state).working, bb, 0);

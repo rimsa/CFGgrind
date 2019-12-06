@@ -236,14 +236,14 @@ CfgEdge* find_edge(CfgNode* src, CfgNode* dst) {
 }
 
 static
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 Bool add_edge2nodes(CFG* cfg, CfgNode* src, CfgNode* dst, ULong count) {
 #else
 Bool add_edge2nodes(CFG* cfg, CfgNode* src, CfgNode* dst) {
 #endif
 	CfgEdge* edge = find_edge(src, dst);
 	if (edge) {
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		edge->count += count;
 #endif
 		return False;
@@ -254,7 +254,7 @@ Bool add_edge2nodes(CFG* cfg, CfgNode* src, CfgNode* dst) {
 	VG_(memset)(edge, 0, sizeof(edge));
 	edge->src = src;
 	edge->dst = dst;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	edge->count = count;
 #endif
 
@@ -652,7 +652,7 @@ Bool remove_edge(CFG* cfg, CfgNode* src, CfgNode* dst) {
 			Int j, size2;
 			CfgEdge* last;
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 			// This edge can only be removed if it was never executed.
 			CGD_ASSERT(edge->count == 0);
 #endif
@@ -781,7 +781,7 @@ CfgInstrRef* cfg_instr_find(CFG* cfg, Addr addr) {
 static
 CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	Int i, size;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	ULong count;
 #endif
 	CfgNode* node;
@@ -819,7 +819,7 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	// The predecessor has naturally a fallthrough to the node.
 	pred->info.has_fallthrough = True;
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	count = 0;
 #endif
 	CGD_ASSERT(node->info.predecessors != 0);
@@ -831,7 +831,7 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 		CGD_ASSERT(edge->dst == node);
 
 		edge->dst = pred;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		count += edge->count;
 #endif
 		CGD_(smart_list_add)(pred->info.predecessors, edge);
@@ -840,7 +840,7 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 
 	// Finally, connect both nodes.
 	CGD_ASSERT(CGD_(smart_list_count)(node->info.predecessors) == 0);
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	add_edge2nodes(cfg, pred, node, count);
 #else
 	add_edge2nodes(cfg, pred, node);
@@ -1315,9 +1315,9 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 	cache = cfgblock_cache(working, group.group_addr);
 	cache->addr = group.group_addr;
 	cache->size = group.group_size;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	cache->count = 0;
-#endif // ENABLE_EDGE_COUNTS
+#endif // ENABLE_PROFILING
 #endif // CFG_NODE_CACHE_SIZE
 
 	// Find the first instruction index.
@@ -1359,7 +1359,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 				// Use it as the new working node.
 				CGD_ASSERT(edge->dst->type == CFG_BLOCK);
 				next = edge->dst->data.block->instrs.leader;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 				edge->count++;
 #endif
 				working = edge->dst;
@@ -1377,7 +1377,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 				// Connect the working block to this and make it the current
 				// working node.
 				CGD_ASSERT(ref_is_head(next));
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 				add_edge2nodes(cfg, working, next->node, 1);
 #else
 				add_edge2nodes(cfg, working, next->node);
@@ -1400,7 +1400,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 				// make it the new working node.
 				} else {
 					CfgNode* node = new_cfgnode_block(cfg, next);
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 					add_edge2nodes(cfg, working, node, 1);
 #else
 					add_edge2nodes(cfg, working, node);
@@ -1444,7 +1444,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 	if (curr) {
 		working = cfgnode_split(cfg, curr);
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		{
 			// Ugly hack because this whole block was already
 			// accounted for. So, decrease the edge count here
@@ -1528,7 +1528,7 @@ void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* working, Addr to,
 		}
 
 		// Connect the nodes.
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		add_edge2nodes(cfg, working, next->node, 0);
 #else
 		add_edge2nodes(cfg, working, next->node);
@@ -1565,13 +1565,13 @@ CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working) {
 
 #if CFG_NODE_CACHE_SIZE > 0
 	working->cache.exit.enabled = True;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	working->cache.exit.count = 0;
-#endif // ENABLE_EDGE_COUNTS
+#endif // ENABLE_PROFILING
 #endif // CFG_NODE_CACHE_SIZE
 
 	// Add the node if it is does not exist yet.
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	add_edge2nodes(cfg, working, cfgnode_exit(cfg), 1);
 #else
 	add_edge2nodes(cfg, working, cfgnode_exit(cfg));
@@ -1585,7 +1585,7 @@ CfgNode* CGD_(cfgnode_set_halt)(CFG* cfg, CfgNode* working) {
 	CGD_ASSERT(working->type == CFG_BLOCK);
 
 	// Add the node if it is does not exist yet.
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	add_edge2nodes(cfg, working, cfgnode_halt(cfg), 1);
 #else
 	add_edge2nodes(cfg, working, cfgnode_halt(cfg));
@@ -1735,7 +1735,7 @@ void CGD_(fix_cfg)(CFG* cfg) {
 void CGD_(check_cfg)(CFG* cfg) {
 	Int i, j, size, size2;
 	Int indirects;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	ULong leaving;
 #endif
 
@@ -1743,7 +1743,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 	CGD_ASSERT(cfg->exit != 0 || cfg->halt != 0);
 
 	indirects = 0;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	leaving = 0;
 #endif
 
@@ -1751,7 +1751,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 	for (i = 0; i < size; i++) {
 		struct {
 			int size;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 			ULong count;
 #endif
 		} in, out;
@@ -1763,7 +1763,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 
 		in.size = node->info.predecessors ?
 						CGD_(smart_list_count)(node->info.predecessors) : 0;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		in.count = 0;
 		for (j = 0; j < in.size; j++) {
 			edge = (CfgEdge*) CGD_(smart_list_at)(node->info.predecessors, j);
@@ -1775,7 +1775,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 
 		out.size = node->info.successors ?
 						CGD_(smart_list_count)(node->info.successors) : 0;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		out.count = 0;
 		for (j = 0; j < out.size; j++) {
 			edge = (CfgEdge*) CGD_(smart_list_at)(node->info.successors, j);
@@ -1793,7 +1793,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 					// An entry node has no predecessors and only a single successor.
 					CGD_ASSERT(in.size == 0);
 					CGD_ASSERT(out.size == 1);
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 					CGD_ASSERT(in.count == 0);
 					CGD_ASSERT(out.count == cfg->stats.execs);
 #endif
@@ -1818,7 +1818,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 				CGD_ASSERT(in.size > 0);
 				CGD_ASSERT(out.size == 0);
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 				CGD_ASSERT(out.count == 0);
 				leaving += in.count;
 #endif
@@ -1834,7 +1834,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 					CGD_ASSERT(in.size > 0);
 					CGD_ASSERT(out.size > 0);
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 					// The in and out degree of edges must match.
 					CGD_ASSERT(in.count == out.count);
 #endif
@@ -1882,7 +1882,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 				CGD_ASSERT(in.size > 0);
 				CGD_ASSERT(out.size == 0);
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 				CGD_ASSERT(in.count == 0);
 				CGD_ASSERT(out.count == 0);
 #endif
@@ -1899,7 +1899,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 	CGD_ASSERT(CGD_(smart_list_count)(cfg->nodes) ==
 			(1 + (cfg->exit ? 1 : 0) + (cfg->halt ? 1 : 0) + cfg->stats.blocks + cfg->stats.phantoms));
 	CGD_ASSERT(indirects == cfg->stats.indirects);
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	CGD_ASSERT(leaving == cfg->stats.execs);
 #endif
 
@@ -2040,7 +2040,7 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 		else
 			VG_(fprintf)(out, "\"0x%lx\"", CGD_(cfgnode_addr)(edge->dst));
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 		VG_(fprintf)(out, " [label=\" %llu\"]", edge->count);
 #endif
 
@@ -2070,7 +2070,7 @@ void write_cfg(CFG* cfg) {
 		CGD_(cfg_build_fdesc)(cfg);
 
 	VG_(fprintf)(fp, "[cfg 0x%lx", cfg->addr);
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 	if (cfg->stats.execs > 0)
 		VG_(fprintf)(fp, ":%llu", cfg->stats.execs);
 #endif
@@ -2152,7 +2152,7 @@ void write_cfg(CFG* cfg) {
 					tl_assert(0);
 			}
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 			if (edge->count > 0)
 				VG_(fprintf)(fp, ":%llu", edge->count);
 #endif
@@ -2375,8 +2375,8 @@ void CGD_(read_cfgs)(Int fd) {
 					has = next_token(fd);
 					CGD_ASSERT(has && token.type == TKN_NUMBER);
 
-#if ENABLE_EDGE_COUNTS
-					if (CGD_(clo).load_edge_counts)
+#if ENABLE_PROFILING
+					if (!CGD_(clo).ignore_profiling)
 						cfg->stats.execs = token.data.number;
 #endif
 
@@ -2431,7 +2431,7 @@ void CGD_(read_cfgs)(Int fd) {
 
 				// If the address match the CFG's addr, then it is the entry block.
 				if (addr == cfg->addr) {
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 					add_edge2nodes(cfg, cfg->entry, node, cfg->stats.execs);
 #else
 					add_edge2nodes(cfg, cfg->entry, node);
@@ -2496,7 +2496,7 @@ void CGD_(read_cfgs)(Int fd) {
 					   token.type == TKN_HALT ||
 					   token.type == TKN_ADDR) {
 					CfgNode* dst = 0;
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 					ULong count = 0;
 #endif
 
@@ -2534,8 +2534,8 @@ void CGD_(read_cfgs)(Int fd) {
 						has = next_token(fd);
 						CGD_ASSERT(has && token.type == TKN_NUMBER);
 
-#if ENABLE_EDGE_COUNTS
-						if (CGD_(clo).load_edge_counts)
+#if ENABLE_PROFILING
+						if (!CGD_(clo).ignore_profiling)
 							count = token.data.number;
 #endif
 
@@ -2543,7 +2543,7 @@ void CGD_(read_cfgs)(Int fd) {
 						CGD_ASSERT(has);
 					}
 
-#if ENABLE_EDGE_COUNTS
+#if ENABLE_PROFILING
 					add_edge2nodes(cfg, node, dst, count);
 #else
 					add_edge2nodes(cfg, node, dst);
@@ -2637,7 +2637,7 @@ void CGD_(clear_visited)(CFG* cfg) {
 	cfg->visited = False;
 }
 
-#if ENABLE_EDGE_COUNTS && CFG_NODE_CACHE_SIZE > 0
+#if ENABLE_PROFILING && CFG_NODE_CACHE_SIZE > 0
 void CGD_(cfgnode_flush_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache) {
 	UInt size;
 	CfgEdge* edge;
