@@ -133,7 +133,7 @@ void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
 {
     call_entry* current_entry;
     Addr ret_addr;
-    CFG* callee;
+    CFG* called;
 #if CFG_NODE_CACHE_SIZE > 0
     CfgNodeCallCache* callCache;
 #endif
@@ -154,21 +154,33 @@ void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
     		ret_addr = 0;
     }
 
-    callee = CGD_(get_cfg)(to->groups[0].group_addr);
+    called = CGD_(get_cfg)(to->groups[0].group_addr);
 
 	// Let's update the fdesc if it is our first real call to it.
-	if (!CGD_(cfg_fdesc)(callee))
-		CGD_(cfg_build_fdesc)(callee);
+	if (!CGD_(cfg_fdesc)(called))
+		CGD_(cfg_build_fdesc)(called);
 
 #if CFG_NODE_CACHE_SIZE > 0
 	callCache = CGD_(current_state).working->cache.call ?
-			&(CGD_(current_state).working->cache.call[CFG_NODE_CACHE_INDEX(callee->addr)]) : 0;
-	if (!callCache ||
-			callCache->addr != callee->addr ||
-			callCache->indirect != from->jmp[jmp].indirect)
-#endif
+			&(CGD_(current_state).working->cache.call[CFG_NODE_CACHE_INDEX(called->addr)]) : 0;
+	if (callCache &&
+			callCache->called == called &&
+			callCache->indirect == from->jmp[jmp].indirect) {
+#if ENABLE_PROFILING
+		callCache->count++;
+#endif // ENABLE_PROFILING
+	} else {
+#if ENABLE_PROFILING
+		if (callCache && callCache->count > 0)
+			CGD_(cfgnode_flush_call_count)(CGD_(current_state).cfg,
+				CGD_(current_state).working, callCache);
+#endif // ENABLE_PROFILING
+#endif // CFG_NODE_CACHE_SIZE
 		CGD_(cfgnode_set_call)(CGD_(current_state).cfg, CGD_(current_state).working,
-				callee, from->jmp[jmp].indirect);
+				called, from->jmp[jmp].indirect);
+#if CFG_NODE_CACHE_SIZE > 0
+	}
+#endif
 
     /* put jcc on call stack */
     current_entry->sp = sp;
@@ -185,10 +197,10 @@ void CGD_(push_call_stack)(BB* from, UInt jmp, BB* to, Addr sp)
     current_entry->cfg = 0;
     current_entry->working = 0;
 
-    CGD_(current_state).cfg = callee;
-    CGD_(current_state).working = CGD_(cfg_entry_node)(callee);
+    CGD_(current_state).cfg = called;
+    CGD_(current_state).working = CGD_(cfg_entry_node)(called);
 #if ENABLE_PROFILING
-	callee->stats.execs++;
+	called->stats.execs++;
 #endif
 }
 

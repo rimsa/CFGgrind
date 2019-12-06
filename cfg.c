@@ -36,6 +36,13 @@ struct _CfgInstrRef {
 	CfgInstrRef* next;	// Next instruction in block. Nil if last.
 };
 
+struct _CfgCall {
+	CFG* called;
+#if ENABLE_PROFILING
+	unsigned long long count;
+#endif
+};
+
 struct _CfgBlock {
 	Addr addr;
 	Int size;
@@ -47,7 +54,7 @@ struct _CfgBlock {
 	} instrs;
 
 	// CfgBlock can have calls to somewhere.
-	SmartList* calls;	// SmartList<CFG*>
+	SmartList* calls;	// SmartList<CfgCall*>
 
 	Bool indirect;				/* has an indirect call or jump */
 };
@@ -195,25 +202,6 @@ Bool has_cfg_node(CFG* cfg, CfgNode* node) {
 }
 
 static
-Bool add_node2cfg(CFG* cfg, CfgNode* node) {
-	if (!has_cfg_node(cfg, node)) {
-		// We can only add block or phantom nodes.
-		CGD_ASSERT(node->type == CFG_BLOCK ||
-				   node->type == CFG_PHANTOM);
-
-		// Add the node to the list of nodes in the CFG.
-		CGD_(smart_list_add)(cfg->nodes, node);
-
-		// Mark the CFG as dirty.
-		cfg->dirty = True;
-
-		return True;
-	}
-
-	return False;
-}
-
-static
 CfgEdge* find_edge(CfgNode* src, CfgNode* dst) {
 	Int i, count;
 
@@ -236,6 +224,95 @@ CfgEdge* find_edge(CfgNode* src, CfgNode* dst) {
 }
 
 static
+CfgCall* find_call(CfgNode* node, CFG* call) {
+	Int i, count;
+
+	CGD_ASSERT(node != 0);
+	CGD_ASSERT(node->type == CFG_BLOCK);
+
+	if (node->data.block->calls) {
+		count = CGD_(smart_list_count)(node->data.block->calls);
+		for (i = 0; i < count; i++) {
+			CfgCall* tmp = (CfgCall*) CGD_(smart_list_at)(node->data.block->calls, i);
+			CGD_ASSERT(tmp != 0);
+
+			if (CGD_(cfg_cmp)(tmp->called, call))
+				return tmp;
+		}
+	}
+
+	return 0;
+}
+
+static
+CfgCall* find_call_with_addr(CfgNode* node, Addr addr) {
+	Int i, size;
+
+	CGD_ASSERT(node != 0 && node->type == CFG_BLOCK);
+	CGD_ASSERT(addr != 0);
+
+	if (node->data.block->calls) {
+		size = CGD_(smart_list_count)(node->data.block->calls);
+		for (i = 0; i < size; i++) {
+			CfgCall* cfgCall = (CfgCall*) CGD_(smart_list_at)(node->data.block->calls, i);
+			CGD_ASSERT(cfgCall != 0);
+
+			if (cfgCall->called->addr == addr)
+				return cfgCall;
+		}
+	}
+
+	return 0;
+}
+
+static
+CfgNode* find_successor_with_addr(CfgNode* node, Addr addr) {
+	Int i, size;
+
+	CGD_ASSERT(node != 0);
+	CGD_ASSERT(addr != 0);
+
+	size = CGD_(smart_list_count)(node->info.successors);
+	for (i = 0; i < size; i++) {
+		CfgEdge* edge;
+		CfgNode* succ;
+
+		edge = (CfgEdge*) CGD_(smart_list_at)(node->info.successors, i);
+		CGD_ASSERT(edge != 0);
+
+		succ = edge->dst;
+
+		// Ignore exit nodes. Entry nodes should never be successor.
+		if (succ->type == CFG_EXIT || succ->type == CFG_HALT)
+			continue;
+
+		if (CGD_(cfgnode_addr)(succ) == addr)
+			return succ;
+	}
+
+	return 0;
+}
+
+static
+Bool add_node2cfg(CFG* cfg, CfgNode* node) {
+	if (!has_cfg_node(cfg, node)) {
+		// We can only add block or phantom nodes.
+		CGD_ASSERT(node->type == CFG_BLOCK ||
+				   node->type == CFG_PHANTOM);
+
+		// Add the node to the list of nodes in the CFG.
+		CGD_(smart_list_add)(cfg->nodes, node);
+
+		// Mark the CFG as dirty.
+		cfg->dirty = True;
+
+		return True;
+	}
+
+	return False;
+}
+
+static
 #if ENABLE_PROFILING
 Bool add_edge2nodes(CFG* cfg, CfgNode* src, CfgNode* dst, ULong count) {
 #else
@@ -245,7 +322,11 @@ Bool add_edge2nodes(CFG* cfg, CfgNode* src, CfgNode* dst) {
 	if (edge) {
 #if ENABLE_PROFILING
 		edge->count += count;
+
+		// Mark the CFG as dirty.
+		cfg->dirty = True;
 #endif
+
 		return False;
 	}
 
@@ -273,6 +354,40 @@ Bool add_edge2nodes(CFG* cfg, CfgNode* src, CfgNode* dst) {
 	cfg->dirty = True;
 
 	return True;
+}
+
+static
+#if ENABLE_PROFILING
+void add_call2node(CFG* cfg, CfgNode* node, CFG* called, ULong count) {
+#else
+void add_call2node(CFG* cfg, CfgNode* node, CFG* called) {
+#endif
+	CfgCall* cfgCall = find_call(node, called);
+	if (cfgCall) {
+#if ENABLE_PROFILING
+		cfgCall->count += count;
+
+		// Mark the CFG as dirty.
+		cfg->dirty = True;
+#endif
+	} else {
+		CGD_ASSERT(find_successor_with_addr(node, called->addr) == 0);
+
+		cfgCall = (CfgCall*) CGD_MALLOC("cgd.cfg.cac.1", sizeof(CfgCall));
+		VG_(memset)(cfgCall, 0, sizeof(CfgCall));
+		cfgCall->called = called;
+#if ENABLE_PROFILING
+		cfgCall->count = count;
+#endif
+
+		if (!node->data.block->calls)
+			node->data.block->calls = CGD_(new_smart_list)(1);
+
+		CGD_(smart_list_add)(node->data.block->calls, cfgCall);
+
+		// Mark the CFG as dirty.
+		cfg->dirty = True;
+	}
 }
 
 static
@@ -351,7 +466,17 @@ void delete_block(CfgBlock* block) {
 	}
 
 	if (block->calls) {
-		CGD_(smart_list_clear)(block->calls, 0);
+		Int i, size;
+
+		size = CGD_(smart_list_count)(block->calls);
+		for (i = 0; i < size; i++) {
+			CfgCall* cfgCall = (CfgCall*) CGD_(smart_list_at)(block->calls, i);
+			CGD_ASSERT(cfgCall != 0);
+
+			CGD_DATA_FREE(cfgCall, sizeof(CfgCall));
+
+			CGD_(smart_list_set)(block->calls, i, 0);
+		}
 		CGD_(delete_smart_list)(block->calls);
 	}
 
@@ -418,7 +543,7 @@ void cfgnode_put_phantom(CFG* cfg, CfgNode* node, CfgInstrRef* ref) {
 }
 
 static
-void cfgnode_add_ref(CFG* cfg, CfgNode* node, CfgInstrRef* ref) {
+void add_ref2node(CFG* cfg, CfgNode* node, CfgInstrRef* ref) {
 	CfgInstrRef** last;
 	CfgInstrRef* old;
 
@@ -614,27 +739,6 @@ Bool ref_is_head(CfgInstrRef* ref) {
 }
 
 static
-Bool has_node_call(CfgNode* node, CFG* call) {
-	Int i, count;
-
-	CGD_ASSERT(node != 0);
-	CGD_ASSERT(node->type == CFG_BLOCK);
-
-	if (node->data.block->calls) {
-		count = CGD_(smart_list_count)(node->data.block->calls);
-		for (i = 0; i < count; i++) {
-			CFG* tmp = (CFG*) CGD_(smart_list_at)(node->data.block->calls, i);
-			CGD_ASSERT(tmp != 0);
-
-			if (CGD_(cfg_cmp)(call, tmp))
-				return True;
-		}
-	}
-
-	return False;
-}
-
-static
 Bool remove_edge(CFG* cfg, CfgNode* src, CfgNode* dst) {
 	Int i, size;
 
@@ -748,25 +852,6 @@ void remove_phantom(CFG* cfg, CfgNode* phantom) {
 
 	CGD_ASSERT(cfg->stats.phantoms > 0);
 	cfg->stats.phantoms--;
-}
-
-static
-Bool cfgnode_add_call(CFG* cfg, CfgNode* node, CFG* call) {
-	if (!has_node_call(node, call)) {
-		CGD_ASSERT(!CGD_(cfgnode_has_successor_with_addr)(node, call->addr));
-
-		if (!node->data.block->calls)
-			node->data.block->calls = CGD_(new_smart_list)(1);
-
-		CGD_(smart_list_add)(node->data.block->calls, call);
-
-		// Mark the CFG as dirty.
-		cfg->dirty = True;
-
-		return True;
-	}
-
-	return False;
 }
 
 static
@@ -1116,53 +1201,6 @@ Bool CGD_(cfgnode_is_indirect)(CfgNode* node) {
 	return (node->type == CFG_BLOCK && node->data.block->indirect);
 }
 
-Bool CGD_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr) {
-	Int i, size;
-
-	CGD_ASSERT(node != 0 && node->type == CFG_BLOCK);
-	CGD_ASSERT(addr != 0);
-
-	if (node->data.block->calls) {
-		size = CGD_(smart_list_count)(node->data.block->calls);
-		for (i = 0; i < size; i++) {
-			CFG* cfg = (CFG*) CGD_(smart_list_at)(node->data.block->calls, i);
-			CGD_ASSERT(cfg != 0);
-
-			if (cfg->addr == addr)
-				return True;
-		}
-	}
-
-	return False;
-}
-
-Bool CGD_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr) {
-	Int i, size;
-
-	CGD_ASSERT(node != 0);
-	CGD_ASSERT(addr != 0);
-
-	size = CGD_(smart_list_count)(node->info.successors);
-	for (i = 0; i < size; i++) {
-		CfgEdge* edge;
-		CfgNode* succ;
-
-		edge = (CfgEdge*) CGD_(smart_list_at)(node->info.successors, i);
-		CGD_ASSERT(edge != 0);
-
-		succ = edge->dst;
-
-		// Ignore exit nodes. Entry nodes should never be successor.
-		if (succ->type == CFG_EXIT || succ->type == CFG_HALT)
-			continue;
-
-		if (CGD_(cfgnode_addr)(succ) == addr)
-			return True;
-	}
-
-	return False;
-}
-
 void CGD_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr) {
 	Int i, size;
 
@@ -1395,7 +1433,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 					!cfgnode_has_successors(working) && !cfgnode_has_calls(working)) {
 					CGD_ASSERT((working->data.block->instrs.tail->instr->addr +
 							working->data.block->instrs.tail->instr->size) == addr);
-					cfgnode_add_ref(cfg, working, next);
+					add_ref2node(cfg, working, next);
 				// Create a new block, connect the working to it and
 				// make it the new working node.
 				} else {
@@ -1507,7 +1545,7 @@ void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* working, Addr to,
 	CGD_ASSERT(indirect == False);
 
 	// Ignore the phantom node if there is a call to this address.
-	if (CGD_(cfgnode_has_call_with_addr)(working, to))
+	if (find_call_with_addr(working, to))
 		return;
 
 	// If it does not exist, take some actions.
@@ -1536,7 +1574,7 @@ void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* working, Addr to,
 	}
 }
 
-void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* call, Bool indirect) {
+void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* called, Bool indirect) {
 #if CFG_NODE_CACHE_SIZE > 0
 	CfgNodeCallCache* cache;
 #endif
@@ -1544,18 +1582,25 @@ void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* call, Bool indirect
 	CGD_ASSERT(cfg != 0);
 	CGD_ASSERT(working != 0);
 	CGD_ASSERT(working->type == CFG_BLOCK);
-	CGD_ASSERT(call != 0);
+	CGD_ASSERT(called != 0);
 
 #if CFG_NODE_CACHE_SIZE > 0
-	cache = cfgcall_cache(working, call->addr);
-	cache->addr = call->addr;
+	cache = cfgcall_cache(working, called->addr);
+	cache->called = called;
 	cache->indirect = indirect;
-#endif
+#if ENABLE_PROFILING
+	cache->count = 0;
+#endif // ENABLE_PROFILING
+#endif // CFG_NODE_CACHE_SIZE
 
 	if (indirect)
 		mark_indirect(cfg, working);
 
-	cfgnode_add_call(cfg, working, call);
+#if ENABLE_PROFILING
+	add_call2node(cfg, working, called, 1);
+#else
+	add_call2node(cfg, working, called);
+#endif
 }
 
 CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working) {
@@ -1865,10 +1910,14 @@ void CGD_(check_cfg)(CFG* cfg) {
 					if (block->calls) {
 						size2 = CGD_(smart_list_count)(block->calls);
 						for (j = 0; j < size2; j++) {
-							CFG* called = (CFG*) CGD_(smart_list_at)(block->calls, j);
-							CGD_ASSERT(called != 0);
+							CfgCall* cfgCall = (CfgCall*) CGD_(smart_list_at)(block->calls, j);
+							CGD_ASSERT(cfgCall != 0);
 
-							CGD_ASSERT(!CGD_(cfgnode_has_successor_with_addr)(node, called->addr));
+							CGD_ASSERT(find_successor_with_addr(node, cfgCall->called->addr) == 0);
+
+							// Note: we should not match the calls count with the successors counts
+							// because, with call emulations, some jumps may be taken that only
+							// later was identified as calls (ex.: late binding).
 						}
 					}
 
@@ -1991,18 +2040,23 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 
 				size2 = CGD_(smart_list_count)(node->data.block->calls);
 				for (j = 0; j < size2; j++) {
-					CFG* called_cfg;
+					CfgCall* cfgCall;
 					HChar* desc;
 
-					called_cfg = (CFG*) CGD_(smart_list_at)(node->data.block->calls, j);
-					CGD_ASSERT(called_cfg != 0);
+					cfgCall = (CfgCall*) CGD_(smart_list_at)(node->data.block->calls, j);
+					CGD_ASSERT(cfgCall != 0);
 
-					VG_(fprintf)(out, "     &nbsp;&nbsp;0x%lx (", called_cfg->addr);
+					VG_(fprintf)(out, "     &nbsp;&nbsp;0x%lx ", cfgCall->called->addr);
 
-					desc = CGD_(fdesc2str)(called_cfg->fdesc);
+#if ENABLE_PROFILING
+					if (cfgCall->count > 0)
+						VG_(fprintf)(out, "\\{%llu\\} ", cfgCall->count);
+#endif
+
+					VG_(fprintf)(out, "(");
+					desc = CGD_(fdesc2str)(cfgCall->called->fdesc);
 					fprintf_escape(out, desc);
 					CGD_FREE(desc);
-
 					VG_(fprintf)(out, ")\\l\n");
 				}
 			}
@@ -2115,13 +2169,17 @@ void write_cfg(CFG* cfg) {
 		if (node->data.block->calls) {
 			size2 = CGD_(smart_list_count)(node->data.block->calls);
 			for (j = 0; j < size2; j++) {
-				CFG* called = (CFG*) CGD_(smart_list_at)(node->data.block->calls, j);
-				CGD_ASSERT(called != 0);
+				CfgCall* cfgCall = (CfgCall*) CGD_(smart_list_at)(node->data.block->calls, j);
+				CGD_ASSERT(cfgCall != 0);
 
 				if (j > 0)
 					VG_(fprintf)(fp, " ");
 
-				VG_(fprintf)(fp, "0x%lx", called->addr);
+				VG_(fprintf)(fp, "0x%lx", cfgCall->called->addr);
+#if ENABLE_PROFILING
+				if (cfgCall->count > 0)
+					VG_(fprintf)(fp, ":%llu", cfgCall->count);
+#endif
 			}
 		}
 		VG_(fprintf)(fp, "] ");
@@ -2449,7 +2507,7 @@ void CGD_(read_cfgs)(Int fd) {
 
 					instr_size = token.data.number;
 
-					cfgnode_add_ref(cfg, node,
+					add_ref2node(cfg, node,
 							new_instr_ref(CGD_(get_instr)(addr, instr_size)));
 
 					addr += instr_size;
@@ -2469,13 +2527,33 @@ void CGD_(read_cfgs)(Int fd) {
 				CGD_ASSERT(has);
 
 				while (token.type == TKN_ADDR) {
-					if (node->data.block->calls == 0)
-						node->data.block->calls = CGD_(new_smart_list)(1);
+					Addr calledAddr;
+#if ENABLE_PROFILING
+					ULong count = 0;
+#endif
 
-					CGD_(smart_list_add)(node->data.block->calls, CGD_(get_cfg)(token.data.addr));
-
+					calledAddr = token.data.addr;
 					has = next_token(fd);
 					CGD_ASSERT(has);
+
+					if (token.type == TKN_COLON) {
+						has = next_token(fd);
+						CGD_ASSERT(has && token.type == TKN_NUMBER);
+
+#if ENABLE_PROFILING
+						if (!CGD_(clo).ignore_profiling)
+							count = token.data.number;
+#endif
+
+						has = next_token(fd);
+						CGD_ASSERT(has);
+					}
+
+#if ENABLE_PROFILING
+					add_call2node(cfg, node, CGD_(get_cfg)(calledAddr), count);
+#else
+					add_call2node(cfg, node, CGD_(get_cfg)(calledAddr));
+#endif
 				}
 
 				CGD_ASSERT(has && token.type == TKN_BRACKET_CLOSE);
@@ -2638,7 +2716,7 @@ void CGD_(clear_visited)(CFG* cfg) {
 }
 
 #if ENABLE_PROFILING && CFG_NODE_CACHE_SIZE > 0
-void CGD_(cfgnode_flush_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache) {
+void CGD_(cfgnode_flush_edge_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache) {
 	UInt size;
 	CfgEdge* edge;
 
@@ -2658,6 +2736,25 @@ void CGD_(cfgnode_flush_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* ca
 	}
 	CGD_ASSERT(size == cache->size);
 	CGD_ASSERT(CGD_(cfgnodes_cmp)(working, cache->working));
+
+	// Mark the CFG as dirty.
+	cfg->dirty = True;
+}
+
+void CGD_(cfgnode_flush_call_count)(CFG* cfg, CfgNode* working, CfgNodeCallCache* cache) {
+	CfgCall* cfgCall;
+
+	CGD_UNUSED(cfg);
+	CGD_ASSERT(working != 0);
+	CGD_ASSERT(cache != 0);
+
+	cfgCall = find_call(working, cache->called);
+	CGD_ASSERT(cfgCall != 0);
+
+	cfgCall->count += cache->count;
+
+	// Mark the CFG as dirty.
+	cfg->dirty = True;
 }
 
 void CGD_(cfg_flush_all_counts)(CFG* cfg) {
@@ -2672,9 +2769,17 @@ void CGD_(cfg_flush_all_counts)(CFG* cfg) {
 
 		if (node->cache.block) {
 			for (j = 0; j < CFG_NODE_CACHE_SIZE; j++) {
-				CfgNodeBlockCache* cache = &(node->cache.block[j]);
-				if (cache->count > 0)
-					CGD_(cfgnode_flush_count)(cfg, node, cache);
+				CfgNodeBlockCache* blockCache = &(node->cache.block[j]);
+				if (blockCache->count > 0)
+					CGD_(cfgnode_flush_edge_count)(cfg, node, blockCache);
+			}
+		}
+
+		if (node->cache.call) {
+			for (j = 0; j < CFG_NODE_CACHE_SIZE; j++) {
+				CfgNodeCallCache* callCache = &(node->cache.call[j]);
+				if (callCache->count > 0)
+					CGD_(cfgnode_flush_call_count)(cfg, node, callCache);
 			}
 		}
 

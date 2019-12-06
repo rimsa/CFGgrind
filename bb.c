@@ -458,7 +458,7 @@ void CGD_(setup_bb)(BB* bb) {
 				} else {
 #if ENABLE_PROFILING
 					if (blockCache && blockCache->count > 0)
-						CGD_(cfgnode_flush_count)(CGD_(current_state).cfg,
+						CGD_(cfgnode_flush_edge_count)(CGD_(current_state).cfg,
 							CGD_(current_state).working, blockCache);
 #endif // ENABLE_PROFILING
 #endif // CFG_NODE_CACHE_SIZE
@@ -640,7 +640,7 @@ void CGD_(setup_bb)(BB* bb) {
 	} else {
 #if ENABLE_PROFILING
 		if (blockCache && blockCache->count > 0)
-			CGD_(cfgnode_flush_count)(CGD_(current_state).cfg,
+			CGD_(cfgnode_flush_edge_count)(CGD_(current_state).cfg,
 				CGD_(current_state).working, blockCache);
 #endif // ENABLE_PROFILING
 #endif // CFG_NODE_CACHE_SIZE

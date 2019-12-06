@@ -145,15 +145,16 @@ struct _Statistics {
 typedef struct _BB					BB;
 typedef struct _fn_node				fn_node;
 typedef struct _file_node			file_node;
-typedef struct _obj_node				obj_node;
+typedef struct _obj_node			obj_node;
 typedef struct _call_entry			call_entry;
 typedef struct _thread_info			thread_info;
 typedef struct _CFG					CFG;
 typedef struct _CfgInstrRef			CfgInstrRef;
 typedef struct _CfgNode				CfgNode;
 typedef struct _CfgEdge				CfgEdge;
-typedef struct _CfgBlock				CfgBlock;
-typedef struct _FunctionDesc			FunctionDesc;
+typedef struct _CfgCall				CfgCall;
+typedef struct _CfgBlock			CfgBlock;
+typedef struct _FunctionDesc		FunctionDesc;
 typedef struct _SmartHash			SmartHash;
 typedef struct _SmartSeek			SmartSeek;
 
@@ -400,8 +401,11 @@ struct _CfgNodePhantomCache {
 
 typedef struct _CfgNodeCallCache		CfgNodeCallCache;
 struct _CfgNodeCallCache {
-	Addr addr;
+	CFG* called;
 	Bool indirect;
+#if ENABLE_PROFILING
+	unsigned long long count;
+#endif
 };
 
 typedef struct _CfgNodeExitCache		CfgNodeExitCache;
@@ -419,7 +423,7 @@ struct _CfgNode {
 
 	union {
 		CfgInstrRef* phantom;	/* Phantom instruction */
-		CfgBlock* block;			/* Block node's block */
+		CfgBlock* block;		/* Block node's block */
 	} data;
 
 	struct {
@@ -542,8 +546,6 @@ SmartList* CGD_(cfgnode_predecessors)(CfgNode* node);
 Bool CGD_(cfgnode_is_visited)(CfgNode* node);
 void CGD_(cfgnode_set_visited)(CfgNode* node, Bool visited);
 Bool CGD_(cfgnode_is_indirect)(CfgNode* node);
-Bool CGD_(cfgnode_has_call_with_addr)(CfgNode* node, Addr addr);
-Bool CGD_(cfgnode_has_successor_with_addr)(CfgNode* node, Addr addr);
 void CGD_(cfgnode_remove_successor_with_addr)(CFG* cfg, CfgNode* node, Addr addr);
 Bool CGD_(cfgnodes_cmp)(CfgNode* node1, CfgNode* node2);
 CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_offset);
@@ -563,7 +565,8 @@ void CGD_(dump_cfg)(CFG* cfg);
 void CGD_(forall_cfg)(void (*func)(CFG*));
 void CGD_(clear_visited)(CFG* cfg);
 #if ENABLE_PROFILING && CFG_NODE_CACHE_SIZE > 0
-void CGD_(cfgnode_flush_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache);
+void CGD_(cfgnode_flush_edge_count)(CFG* cfg, CfgNode* working, CfgNodeBlockCache* cache);
+void CGD_(cfgnode_flush_call_count)(CFG* cfg, CfgNode* working, CfgNodeCallCache* cache);
 void CGD_(cfg_flush_all_counts)(CFG* cfg);
 #endif
 
