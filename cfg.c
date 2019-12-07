@@ -452,6 +452,12 @@ CfgBlock* new_block(CfgInstrRef* ref) {
 }
 
 static
+void delete_cfgcall(CfgCall* call) {
+	CGD_ASSERT(call != 0);
+	CGD_DATA_FREE(call, sizeof(CfgCall));
+}
+
+static
 void delete_block(CfgBlock* block) {
 	CfgInstrRef* ref;
 	CfgInstrRef* next;
@@ -466,17 +472,7 @@ void delete_block(CfgBlock* block) {
 	}
 
 	if (block->calls) {
-		Int i, size;
-
-		size = CGD_(smart_list_count)(block->calls);
-		for (i = 0; i < size; i++) {
-			CfgCall* cfgCall = (CfgCall*) CGD_(smart_list_at)(block->calls, i);
-			CGD_ASSERT(cfgCall != 0);
-
-			CGD_DATA_FREE(cfgCall, sizeof(CfgCall));
-
-			CGD_(smart_list_set)(block->calls, i, 0);
-		}
+		CGD_(smart_list_clear)(block->calls, (void (*)(void*)) delete_cfgcall);
 		CGD_(delete_smart_list)(block->calls);
 	}
 
@@ -962,33 +958,15 @@ CFG* new_cfg(Addr addr) {
 
 static
 void delete_cfg(CFG* cfg) {
-	Int i, size;
-
 	CGD_ASSERT(cfg != 0);
 
 	if (cfg->fdesc)
 		CGD_(delete_fdesc)(cfg->fdesc);
 
-	size = CGD_(smart_list_count)(cfg->edges);
-	for (i = 0; i < size; i++) {
-		CfgEdge* edge = (CfgEdge*) CGD_(smart_list_at)(cfg->edges, i);
-		CGD_ASSERT(edge != 0);
-
-		delete_cfgedge(edge);
-
-		CGD_(smart_list_set)(cfg->edges, i, 0);
-	}
+	CGD_(smart_list_clear)(cfg->edges, (void (*)(void*)) delete_cfgedge);
 	CGD_(delete_smart_list)(cfg->edges);
 
-	size = CGD_(smart_list_count)(cfg->nodes);
-	for (i = 0; i < size; i++) {
-		CfgNode* node = (CfgNode*) CGD_(smart_list_at)(cfg->nodes, i);
-		CGD_ASSERT(node != 0);
-
-		delete_cfgnode(node);
-
-		CGD_(smart_list_set)(cfg->nodes, i, 0);
-	}
+	CGD_(smart_list_clear)(cfg->nodes, (void (*)(void*)) delete_cfgnode);
 	CGD_(delete_smart_list)(cfg->nodes);
 
 	CGD_(smart_hash_clear)(cfg->cache.refs, 0);
