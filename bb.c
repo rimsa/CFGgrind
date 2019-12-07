@@ -492,11 +492,19 @@ void CGD_(setup_bb)(BB* bb) {
 			CGD_(print_execstate)(-2, &CGD_(current_state));
 		}
 	} else {
+		CFG* called;
+
 		jmpkind = bjk_None;
 		isConditionalJump = False;
 
-		CGD_(current_state).cfg = CGD_(get_cfg)(bb->groups[0].group_addr);
-		CGD_(current_state).working = CGD_(cfg_entry_node)(CGD_(current_state).cfg);
+		called = CGD_(get_cfg)(bb->groups[0].group_addr);
+		if (CGD_(current_state).sig > 0)
+			CGD_(cfgnode_set_signal_handler)(CGD_(current_state).cfg,
+				CGD_(current_state).working, called, CGD_(current_state).sig);
+
+		CGD_(current_state).cfg = called;
+		CGD_(current_state).working = CGD_(cfg_entry_node)(called);
+
 #if ENABLE_PROFILING
 		CGD_(current_state).cfg->stats.execs++;
 #endif

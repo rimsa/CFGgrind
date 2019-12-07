@@ -2,7 +2,7 @@
 
 CFGgrind is a valgrind plugin to reconstruct control flow graphs (CFGs) dynamically by following the execution of binary programs.
 This tools allows successive CFGs refinements by supporting multiple executions with different inputs.
-We use profiling for edge counts and multi-thread programs.
+We support multi-thread programs with profiling information in the edges, calls and signal handlers.
 
 ## Building
 

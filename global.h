@@ -153,6 +153,7 @@ typedef struct _CfgInstrRef			CfgInstrRef;
 typedef struct _CfgNode				CfgNode;
 typedef struct _CfgEdge				CfgEdge;
 typedef struct _CfgCall				CfgCall;
+typedef struct _CfgSignalHandler	CfgSignalHandler;
 typedef struct _CfgBlock			CfgBlock;
 typedef struct _FunctionDesc		FunctionDesc;
 typedef struct _SmartHash			SmartHash;
@@ -552,6 +553,7 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 void CGD_(cfgnode_set_phantom)(CFG* cfg, CfgNode* working, Addr to,
 		BBJumpKind jmpkind, Bool indirect);
 void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* call, Bool indirect);
+void CGD_(cfgnode_set_signal_handler)(CFG* cfg, CfgNode* working, CFG* called, Int signum);
 CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working);
 CfgNode* CGD_(cfgnode_set_halt)(CFG* cfg, CfgNode* working);
 void CGD_(clean_visited_cfgnodes)(CFG* cfg);

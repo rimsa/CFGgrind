@@ -43,6 +43,11 @@ struct _CfgCall {
 #endif
 };
 
+struct _CfgSignalHandler {
+	Int signum;
+	CfgCall* handler;
+};
+
 struct _CfgBlock {
 	Addr addr;
 	Int size;
@@ -54,7 +59,8 @@ struct _CfgBlock {
 	} instrs;
 
 	// CfgBlock can have calls to somewhere.
-	SmartList* calls;	// SmartList<CfgCall*>
+	SmartList* calls;		// SmartList<CfgCall*>
+	SmartList* sighandlers;	// SmartList<CfgSignalHandler*>
 
 	Bool indirect;				/* has an indirect call or jump */
 };
@@ -69,6 +75,7 @@ struct {
 		TKN_BRACKET_OPEN,
 		TKN_BRACKET_CLOSE,
 		TKN_COLON,
+		TKN_ARROW,
 		TKN_CFG,
 		TKN_NODE,
 		TKN_EXIT,
@@ -266,6 +273,28 @@ CfgCall* find_call_with_addr(CfgNode* node, Addr addr) {
 }
 
 static
+CfgSignalHandler* find_signal_handler(CfgNode* node, Int signum) {
+	Int i, size;
+
+	CGD_ASSERT(node != 0);
+	CGD_ASSERT(node->type == CFG_BLOCK);
+
+	if (node->data.block->sighandlers) {
+		size = CGD_(smart_list_count)(node->data.block->sighandlers);
+		for (i = 0; i < size; i++) {
+			CfgSignalHandler* tmp = (CfgSignalHandler*)
+				CGD_(smart_list_at)(node->data.block->sighandlers, i);
+			CGD_ASSERT(tmp != 0);
+
+			if (tmp->signum == signum)
+				return tmp;
+		}
+	}
+
+	return 0;
+}
+
+static
 CfgNode* find_successor_with_addr(CfgNode* node, Addr addr) {
 	Int i, size;
 
@@ -391,6 +420,45 @@ void add_call2node(CFG* cfg, CfgNode* node, CFG* called) {
 }
 
 static
+#if ENABLE_PROFILING
+void add_sighandler2node(CFG* cfg, CfgNode* node, CFG* called, Int signum, ULong count) {
+#else
+void add_sighandler2node(CFG* cfg, CfgNode* node, CFG* called, Int signum) {
+#endif
+	CfgSignalHandler* sigHandler = find_signal_handler(node, signum);
+	if (sigHandler) {
+		CGD_ASSERT(CGD_(cfg_cmp)(sigHandler->handler->called, called));
+
+#if ENABLE_PROFILING
+		sigHandler->handler->count += count;
+
+		// Mark the CFG as dirty.
+		cfg->dirty = True;
+#endif
+	} else {
+		sigHandler = (CfgSignalHandler*) CGD_MALLOC("cgd.cfg.cssh.1", sizeof(CfgSignalHandler));
+		VG_(memset)(sigHandler, 0, sizeof(CfgSignalHandler));
+
+		sigHandler->signum = signum;
+		sigHandler->handler = (CfgCall*) CGD_MALLOC("cgd.cfg.cssh.2", sizeof(CfgCall));
+		VG_(memset)(sigHandler->handler, 0, sizeof(CfgCall));
+		sigHandler->handler->called = called;
+
+#if ENABLE_PROFILING
+		sigHandler->handler->count += count;
+#endif
+
+		if (!node->data.block->sighandlers)
+			node->data.block->sighandlers = CGD_(new_smart_list)(1);
+
+		CGD_(smart_list_add)(node->data.block->sighandlers, sigHandler);
+
+		// Mark the CFG as dirty.
+		cfg->dirty = True;
+	}
+}
+
+static
 CfgNode* new_cfgnode(enum CfgNodeType type, Int succs, Int preds) {
 	CfgNode* node;
 
@@ -458,6 +526,15 @@ void delete_cfgcall(CfgCall* call) {
 }
 
 static
+void delete_cfgsighandler(CfgSignalHandler* sighandler) {
+	CGD_ASSERT(sighandler != 0);
+	CGD_ASSERT(sighandler->handler != 0);
+
+	CGD_DATA_FREE(sighandler->handler, sizeof(CfgCall));
+	CGD_DATA_FREE(sighandler, sizeof(CfgSignalHandler));
+}
+
+static
 void delete_block(CfgBlock* block) {
 	CfgInstrRef* ref;
 	CfgInstrRef* next;
@@ -474,6 +551,11 @@ void delete_block(CfgBlock* block) {
 	if (block->calls) {
 		CGD_(smart_list_clear)(block->calls, (void (*)(void*)) delete_cfgcall);
 		CGD_(delete_smart_list)(block->calls);
+	}
+
+	if (block->sighandlers) {
+		CGD_(smart_list_clear)(block->sighandlers, (void (*)(void*)) delete_cfgsighandler);
+		CGD_(delete_smart_list)(block->sighandlers);
 	}
 
 	CGD_DATA_FREE(block, sizeof(CfgBlock));
@@ -1581,6 +1663,20 @@ void CGD_(cfgnode_set_call)(CFG* cfg, CfgNode* working, CFG* called, Bool indire
 #endif
 }
 
+void CGD_(cfgnode_set_signal_handler)(CFG* cfg, CfgNode* working, CFG* called, Int signum) {
+	CGD_ASSERT(cfg != 0);
+	CGD_ASSERT(working != 0);
+	CGD_ASSERT(working->type == CFG_BLOCK);
+	CGD_ASSERT(called != 0);
+	CGD_ASSERT(signum > 0);
+
+#if ENABLE_PROFILING
+	add_sighandler2node(cfg, working, called, signum, 1);
+#else
+	add_sighandler2node(cfg, working, called, signum);
+#endif
+}
+
 CfgNode* CGD_(cfgnode_set_exit)(CFG* cfg, CfgNode* working) {
 	CGD_ASSERT(cfg != 0);
 	CGD_ASSERT(working != 0);
@@ -2039,6 +2135,33 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 				}
 			}
 
+			if (node->data.block->sighandlers) {
+				VG_(fprintf)(out, "     | [signals]\\l\n");
+
+				size2 = CGD_(smart_list_count)(node->data.block->sighandlers);
+				for (j = 0; j < size2; j++) {
+					CfgSignalHandler* cfgSighandler;
+					HChar* desc;
+
+					cfgSighandler = (CfgSignalHandler*) CGD_(smart_list_at)(node->data.block->sighandlers, j);
+					CGD_ASSERT(cfgSighandler != 0);
+
+					VG_(fprintf)(out, "     &nbsp;&nbsp;%02d: 0x%lx ", cfgSighandler->signum,
+						cfgSighandler->handler->called->addr);
+
+#if ENABLE_PROFILING
+					if (cfgSighandler->handler->count > 0)
+						VG_(fprintf)(out, "\\{%llu\\} ", cfgSighandler->handler->count);
+#endif
+
+					VG_(fprintf)(out, "(");
+					desc = CGD_(fdesc2str)(cfgSighandler->handler->called->fdesc);
+					fprintf_escape(out, desc);
+					CGD_FREE(desc);
+					VG_(fprintf)(out, ")\\l\n");
+				}
+			}
+
 			VG_(fprintf)(out, "  }\"]\n");
 		} else if (node->type == CFG_PHANTOM) {
 			VG_(fprintf)(out, "  \"0x%lx\" [label=\"{\n", CGD_(cfgnode_addr)(node));
@@ -2162,6 +2285,28 @@ void write_cfg(CFG* cfg) {
 		}
 		VG_(fprintf)(fp, "] ");
 
+		VG_(fprintf)(fp, "[");
+		if (node->data.block->sighandlers) {
+			size2 = CGD_(smart_list_count)(node->data.block->sighandlers);
+			for (j = 0; j < size2; j++) {
+				CfgSignalHandler* cfgSighandler;
+
+				if (j > 0)
+					VG_(fprintf)(fp, " ");
+
+				cfgSighandler = (CfgSignalHandler*) CGD_(smart_list_at)(node->data.block->sighandlers, j);
+				CGD_ASSERT(cfgSighandler != 0);
+
+				VG_(fprintf)(fp, "%d->0x%lx", cfgSighandler->signum, cfgSighandler->handler->called->addr);
+
+#if ENABLE_PROFILING
+				if (cfgSighandler->handler->count > 0)
+					VG_(fprintf)(fp, ":%llu", cfgSighandler->handler->count);
+#endif
+			}
+		}
+		VG_(fprintf)(fp, "] ");
+
 		VG_(fprintf)(fp, "%s ", node->data.block->indirect ? "true" : "false");
 
 		VG_(fprintf)(fp, "[");
@@ -2223,16 +2368,16 @@ Bool next_token(Int fd) {
     VG_(memset)(&token, 0, sizeof(token));
 
     state = 1;
-    while (state != 8) {
+    while (state != 9) {
         Int c;
 
         CGD_ASSERT(idx >= 0 && idx < ((sizeof(token.text) / sizeof(HChar))-1));
         if (last == -1) {
-        		Int s;
-        		HChar tmp;
+			Int s;
+			HChar tmp;
 
-        		s = VG_(read)(fd, &tmp, 1);
-        		c = s < 1 ? -1 : tmp;
+			s = VG_(read)(fd, &tmp, 1);
+			c = s < 1 ? -1 : tmp;
         } else {
 			c = last;
 			last = -1;
@@ -2259,20 +2404,22 @@ Bool next_token(Int fd) {
 				} else if (c == '[') {
 					token.text[idx++] = c;
 					token.type = TKN_BRACKET_OPEN;
-					state = 8;
+					state = 9;
 				} else if (c == ']') {
 					token.text[idx++] = c;
 					token.type = TKN_BRACKET_CLOSE;
-					state = 8;
+					state = 9;
 				} else if (c == ':') {
 					token.text[idx++] = c;
 					token.type = TKN_COLON;
-					state = 8;
+					state = 9;
 				} else if (c == '\"') {
 					token.type = TKN_TEXT;
 					state = 6;
-				} else if (c == '#') {
+				} else if (c == '-') {
 					state = 7;
+				} else if (c == '#') {
+					state = 8;
 				} else {
 					tl_assert(0);
 				}
@@ -2287,10 +2434,10 @@ Bool next_token(Int fd) {
 					if (c != -1)
 						last = c;
 
-					state = 8;
+					state = 9;
 				}
 
-            		break;
+				break;
             case 3:
 				if ((c >= '0' && c <= '9') ||
 					(VG_(tolower)(c) >= 'a' && VG_(tolower)(c) <= 'f')) {
@@ -2302,10 +2449,10 @@ Bool next_token(Int fd) {
 					if (c != -1)
 						last = c;
 
-					state = 8;
+					state = 9;
 				}
 
-            		break;
+				break;
             case 4:
 				if (c >= '0' && c <= '9') {
 					token.text[idx++] = c;
@@ -2316,10 +2463,10 @@ Bool next_token(Int fd) {
 					if (c != -1)
 						last = c;
 
-					state = 8;
+					state = 9;
 				}
 
-            		break;
+				break;
             case 5:
 				if (VG_(tolower)(c) >= 'a' && VG_(tolower)(c) <= 'z') {
 					token.text[idx++] = VG_(tolower)(c);
@@ -2346,14 +2493,14 @@ Bool next_token(Int fd) {
 					if (c != -1)
 						last = c;
 
-					state = 8;
+					state = 9;
 				}
 
 				break;
 			case 6:
 				if (c != -1) {
 					if (c == '\"')
-						state = 8;
+						state = 9;
 					else {
 						token.text[idx++] = c;
 						state = 6;
@@ -2364,13 +2511,23 @@ Bool next_token(Int fd) {
 
 				break;
 			case 7:
+				if (c == '>') {
+					token.type = TKN_ARROW;
+					token.text[idx++] = c;
+					state = 9;
+				} else {
+					tl_assert(0);
+				}
+
+				break;
+			case 8:
 				if (c == -1) {
 					return False;
 				} else {
 					if (c == '\n')
 						state = 1;
 					else
-						state = 7;
+						state = 8;
 				}
 
 				break;
@@ -2531,6 +2688,53 @@ void CGD_(read_cfgs)(Int fd) {
 					add_call2node(cfg, node, CGD_(get_cfg)(calledAddr), count);
 #else
 					add_call2node(cfg, node, CGD_(get_cfg)(calledAddr));
+#endif
+				}
+
+				CGD_ASSERT(has && token.type == TKN_BRACKET_CLOSE);
+
+				has = next_token(fd);
+				CGD_ASSERT(has && token.type == TKN_BRACKET_OPEN);
+
+				has = next_token(fd);
+				CGD_ASSERT(has);
+
+				while (token.type == TKN_NUMBER) {
+					Int signum;
+					Addr calledAddr;
+#if ENABLE_PROFILING
+					ULong count = 0;
+#endif
+
+					signum = token.data.number;
+
+					has = next_token(fd);
+					CGD_ASSERT(has && token.type == TKN_ARROW);
+
+					has = next_token(fd);
+					CGD_ASSERT(has && token.type == TKN_ADDR);
+					calledAddr = token.data.addr;
+
+					has = next_token(fd);
+					CGD_ASSERT(has);
+
+					if (token.type == TKN_COLON) {
+						has = next_token(fd);
+						CGD_ASSERT(has && token.type == TKN_NUMBER);
+
+#if ENABLE_PROFILING
+						if (!CGD_(clo).ignore_profiling)
+							count = token.data.number;
+#endif
+
+						has = next_token(fd);
+						CGD_ASSERT(has);
+					}
+
+#if ENABLE_PROFILING
+					add_sighandler2node(cfg, node, CGD_(get_cfg)(calledAddr), signum, count);
+#else
+					add_sighandler2node(cfg, node, CGD_(get_cfg)(calledAddr), signum);
 #endif
 				}
 

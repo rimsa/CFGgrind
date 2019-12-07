@@ -195,7 +195,8 @@ void CGD_(run_thread)(ThreadId tid)
 
 void CGD_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack)
 {
-    exec_state *es;
+    exec_state* es;
+	exec_state* old_es;
 
     CGD_DEBUG(0, ">> pre_signal(TID %u, sig %d, alt_st %s)\n",
 	     tid, sigNum, alt_stack ? "yes":"no");
@@ -204,7 +205,7 @@ void CGD_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack)
     CGD_(switch_thread)(tid);
 
     /* save current execution state */
-    exec_state_save();
+    old_es = exec_state_save();
 
     /* setup new cxtinfo struct for this signal handler */
     es = push_exec_state(sigNum);
@@ -213,6 +214,10 @@ void CGD_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack)
     /* setup current state for a spontaneous call */
     CGD_(init_exec_state)( &CGD_(current_state) );
     CGD_(current_state).sig = sigNum;
+
+	// Restore CFG and working for signal mapping.
+	CGD_(current_state).cfg = old_es->cfg;
+	CGD_(current_state).working = old_es->working;
 }
 
 /* Run post-signal if the stackpointer for call stack is at
