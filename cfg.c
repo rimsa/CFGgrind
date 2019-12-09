@@ -2353,6 +2353,10 @@ void CGD_(write_cfgs)(const HChar* filename) {
 	}
 	CGD_ASSERT(fp != 0);
 
+	VG_(fprintf)(fp, "# [cfg cfg-addr{:invocations} cfg-name is-complete]\n");
+	VG_(fprintf)(fp, "# [node cfg-addr node-addr node-size [list of instr-size] [list of cfg-addr{:count}]\n");
+	VG_(fprintf)(fp, "#       [list of signal-id->cfg-addr{:count}] is-indirect [list of succ-node{:count}]\n");
+
 	CGD_(forall_cfg)(write_cfg);
 
 	VG_(fclose)(fp);

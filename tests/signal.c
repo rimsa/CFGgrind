@@ -11,9 +11,8 @@ void handler(int x) {
 int main(int argc, char* argv[]) {
     unsigned long long c = 0;
 
-    signal(SIGINT, handler);
     signal(SIGALRM, handler);
-    alarm(3);
+    alarm(1);
 
     while (g) {
       ++c;
