@@ -3,7 +3,7 @@
 from cfg import *
 
 class CurrentPair(object):
-	def __init__(self, cfg=None, working=None):
+	def __init__(self, cfg = None, working = None):
 		self.cfg = cfg
 		self.working = working
 
@@ -29,17 +29,28 @@ class CurrentPair(object):
 		return CurrentPair(self.cfg, self.working)
 
 
-class CallStack(object):
-	def __init__(self, cs = []):
-		self._callstack = cs
+from collections import namedtuple
+CSEntry = namedtuple('CSEntry', 'current ret_addr')
 
-	def push(self, hp):
-		assert isinstance(hp, CurrentPair)
-		self._callstack.append(hp.copy())
+class CallStack(object):
+	def __init__(self, cs = None):
+		self._callstack = cs if cs else []
+
+	def push(self, current, ret_addr):
+		assert isinstance(current, CurrentPair)
+		self._callstack.append(CSEntry(current, ret_addr))
+
+	def pops_count(self, ret_addr):
+		idx = self.size()
+		while (idx > 0):
+			idx -= 1
+			if self._callstack[idx].ret_addr == ret_addr:
+				return self.size() - idx
+		return 0
 
 	def pop(self):
 		assert self.size() > 0
-		return self._callstack.pop()
+		return self._callstack.pop().current
 
 	def size(self):
 		return len(self._callstack)
@@ -49,10 +60,9 @@ class CallStack(object):
 
 
 class State(object):
-	def __init__(self, current, cs = [], pending = None):
+	def __init__(self, current, cs = None):
 		self.current = current
 		self._callstack = CallStack(cs)
-		self._pending = pending
 
 	@property
 	def current(self):
@@ -60,20 +70,13 @@ class State(object):
 
 	@current.setter
 	def current(self, current):
-		if (isinstance(current, CurrentPair)):
-			self._current = current.copy();
+		if not current:
+			self._current = None
+		elif isinstance(current, CurrentPair):
+			self._current = current.copy()
 		else:
-			self._current = CurrentPair(current[0], current[1]);
+			self._current = CurrentPair(current[0], current[1])
 
 	@property
 	def callstack(self):
 		return self._callstack
-
-	@property
-	def pending(self):
-		return self._pending
-
-	@pending.setter
-	def pending(self, pending):
-		assert (not pending) or isinstance(pending, BasicBlock)
-		self._pending = pending

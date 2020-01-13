@@ -14,7 +14,7 @@ load(0x4004b0, 4, "sub    $0x10,%rsp");
 load(0x4004b4, 8, "movl   $0xa,0xc(%rsp)");
 load(0x4004bc, 5, "lea    0xc(%rsp),%rdi");
 load(0x4004c1, 5, "mov    $0x1,%esi");
-load(0x4004c6, 5, "callq  0x400492", call(0x400492));
+load(0x4004c6, 5, "callq  0x400492", call(0x400492, 0x4004cb));
 load(0x4004cb, 4, "add    $0x10,%rsp");
 load(0x4004cf, 1, "retq", return);
 exec(0x4004b0);

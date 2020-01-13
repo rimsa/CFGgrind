@@ -14,103 +14,6 @@ def write_cfg(cfg, working):
 		fd.write(cfg.dot(working))
 	total = total + 1
 
-def process_tail(state, instr):
-	# For jump instruction, do nothing since it
-	# will be handled in the next iteration when
-	# processing the next group.
-	if isinstance(instr.type, JumpType):
-		write_cfg(state.current.cfg, state.current.working)
-
-	# For branch instruction, we must take into consideration
-	# the addresses of the fallthrough and jump (if direct).
-	elif isinstance(instr.type, BranchType):
-		# The possible target addresses.
-		addrs = [instr.type.fallthrough]
-		if instr.type.direct:
-			addrs.append(instr.type.target)
-
-		# for each of these addresses.
-		for addr in addrs:
-				# Search for a node that contains an instruction
-				# with this address.
-				node = state.current.cfg.find_node_with_addr(addr)
-
-				# If exists, node can be either phantom or basic block.
-				if node:
-					# If it is a basic block, split the node if the
-					# address does not match the leader instruction.
-					if isinstance(node, BasicBlock) and node.group.leader.addr != addr:
-						node = state.current.cfg.split(node, addr)
-				# Otherwise, create a phantom node with this address.
-				else:
-					node = state.current.cfg.add_node(Phantom(addr))
-
-				# Connect the working with this node if it not a
-				# successor already.
-				if not (node in state.current.cfg.succs(state.current.working)):
-					state.current.cfg.add_edge(Edge(state.current.working, node))
-
-		write_cfg(state.current.cfg, state.current.working)
-
-	# For call instruction, save the current cfg with the working node.
-	# Later, save the callee node and mark the CFG as nil for delayed discovery.
-	elif isinstance(instr.type, CallType):
-		write_cfg(state.current.cfg, state.current.working)
-
-		# Append the current cfg and working node in the call stack.
-		state.callstack.push(state.current)
-
-		# Save the node with the call.
-		state.pending = state.current.working
-
-	# For return instruction, connect working with the exit node if not
-	# a successor already. Later, restore the previous cfg and working
-	# from the callstack.
-	elif isinstance(instr.type, ReturnType):
-		write_cfg(state.current.cfg, state.current.working)
-
-		# Connect working to the exit node if not existent.
-		if not (state.current.cfg.exit in state.current.cfg.succs(state.current.working)):
-			state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.exit))
-
-		write_cfg(state.current.cfg, state.current.cfg.exit)
-
-		# Restore call function is the call stack is not empty.
-		if state.callstack:
-			state.current = state.callstack.pop()
-		# Otherwise, it means it is the end of the program.
-		else:
-			exit(0)
-
-	# For return instruction, connect working with the terminate node if not
-	# a successor already. Do the same for all nodes in the call stack.
-	elif isinstance(instr.type, HaltType):
-		write_cfg(state.current.cfg, state.current.working)
-
-		# Connect working to the terminate node if not existent.
-		if not (state.current.cfg.term in state.current.cfg.succs(state.current.working)):
-			state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.term))
-
-		write_cfg(state.current.cfg, state.current.cfg.term)
-
-		# Connect each working node in the call stack with the
-		# termination node.
-		while state.callstack:
-			state.current = state.callstack.pop()
-			if not (state.current.cfg.term in state.current.cfg.succs(state.current.working)):
-				state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.term))
-
-			write_cfg(state.current.cfg, state.current.cfg.term)
-
-		# End of the program.
-		exit(0)
-
-	# Should never be a standard instruction.
-	else:
-		assert False, "unreachable code"
-
-	return state
-
 def process_group(cfg, working, group):
 	# Current instruction in the working node can be any,
 	# from leader to tail. We use it to match the
@@ -185,37 +88,102 @@ def process_group(cfg, working, group):
 
 	return working
 
-def process_program(mapping, machine):
-	# The start CFG with the first instruction address
-	# that will be executed. Set the working node with
-	# the entry node.
-	addr = machine.start_addr()
-	initial = mapping.setdefault(addr, CFG(addr))
-	state = State((initial, initial.entry), [], None)
+def process_type(mapping, state, type, target_addr):
+	# For jump instruction, do nothing since it
+	# will be handled in the next iteration when
+	# processing the next group.
+	if isinstance(type, JumpType):
+		pass
 
-	write_cfg(state.current.cfg, state.current.working)
+	# For branch instruction, we must take into consideration
+	# the addresses of the fallthrough and jump (if direct).
+	elif isinstance(type, BranchType):
+		# The possible target addresses.
+		addrs = [type.fallthrough]
+		if type.direct:
+			addrs.append(type.target)
+
+		# for each of these addresses.
+		for addr in addrs:
+			if addr != target_addr:
+				# Search for a node that contains an instruction
+				# with this address.
+				node = state.current.cfg.find_node_with_addr(addr)
+
+				# If exists, node can be either phantom or basic block.
+				if node:
+					# If it is a basic block, split the node if the
+					# address does not match the leader instruction.
+					if isinstance(node, BasicBlock) and node.group.leader.addr != addr:
+						node = state.current.cfg.split(node, addr)
+				# Otherwise, create a phantom node with this address.
+				else:
+					node = state.current.cfg.add_node(Phantom(addr))
+
+				# Connect the working with this node if it not a
+				# successor already.
+				if not (node in state.current.cfg.succs(state.current.working)):
+					state.current.cfg.add_edge(Edge(state.current.working, node))
+
+		write_cfg(state.current.cfg, state.current.working)
+
+	# For call instruction, find the target cfg and added to the call list of
+	# the working node. Then. save the current state with the return address
+	# in the call stack and set the new current state with the called cfg
+	# and its entry node.
+	elif isinstance(type, CallType):
+		# Find the called CFG.
+		called = mapping.setdefault(target_addr, CFG(target_addr))
+
+		# Add the called cfg to the call list of the working node.
+		if not (called in state.current.working.calls):
+			state.current.working.add_call(called)
+
+		write_cfg(state.current.cfg, state.current.working)
+
+		# Push the current state to the call stack with the
+		# expected return address.
+		state.callstack.push(state.current, type.fallthrough)
+
+		# Update the current state with the called cfg and its entry node.
+		state.current = (called, called.entry)
+		write_cfg(state.current.cfg, state.current.working)
+
+	# For return instructions, first count how many calls are stacked until it
+	# reaches the correct return number.
+	elif isinstance(type, ReturnType):
+		pops = state.callstack.pops_count(target_addr)
+		while pops > 0:
+			# Connect working to the exit node if not existent.
+			if not (state.current.cfg.exit in state.current.cfg.succs(state.current.working)):
+				state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.exit))
+
+			write_cfg(state.current.cfg, state.current.cfg.exit)
+
+			state.current = state.callstack.pop()
+			pops -= 1
+
+	else:
+		assert False, "unreachable code"
+
+	return state
+
+def process_program(mapping, machine):
+	state = State(None, [])
 
 	# The next group of instruction that will be executed.
 	for group in machine.run():
-		# Delayed discovery of the cfg.
-		if state.pending:
-			# Delayed discovered of CFG using the address
-			# of the group leader. Set the working node
-			# with this CFG's entry node.
-			# called = CFG.instance(group.leader.addr)
-			addr = group.leader.addr
-			called = mapping.setdefault(addr, CFG(addr))
-
-			# Store the cfg in the call list of the pending node.
-			if not (called in state.pending.calls):
-				state.pending.add_call(called)
-			state.pending = None
-
-			state.current = (called, called.entry)
+		addr = group.leader.addr
+		if not state.current:
+			initial = mapping.setdefault(addr, CFG(addr))
+			state.current = (initial, initial.entry)
 			write_cfg(state.current.cfg, state.current.working)
+		else:
+			assert isinstance(state.current.working, BasicBlock)
+			state = process_type(mapping, state, state.current.working.group.tail.type, addr)
 
 		# Check if we processed this group from this working point.
-		idx = group.leader.addr % CACHE_SIZE
+		idx = addr % CACHE_SIZE
 		cached_group, cached_working = state.current.working.cache[idx]
 		if cached_group == group:
 			# In this case, just use the next working from the start.
@@ -228,19 +196,15 @@ def process_program(mapping, machine):
 			# Add the new working node to the cache.
 			prev_working.cache[idx] = (group, state.current.working)
 
-		# Get the last processed instruction from the group.
-		state = process_tail(state, group.tail)
+		write_cfg(state.current.cfg, state.current.working)
 
-	# If the program didn't exit, mark as the stop of the program.
-	assert isinstance(state.current.working, BasicBlock);
-
-	# Connect working to the halt node if not existent.
+	# At the end of the machine execution, connect the working node with the halt node.
 	if not (state.current.cfg.halt in state.current.cfg.succs(state.current.working)):
 		state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.halt))
 
 	write_cfg(state.current.cfg, state.current.cfg.halt)
 
-	# Connect each working node in the call stack with the halt node.
+	# Do the same if there are pending working nodes in the call stack.
 	while state.callstack:
 		state.current = state.callstack.pop()
 		if not (state.current.cfg.halt in state.current.cfg.succs(state.current.working)):

@@ -76,26 +76,25 @@ class Machine(object):
 
 				return Instruction(addr, size, text, BranchType(target, fallthrough, direct))
 			elif name == "call":
-				assert len(args) >= 1 and len(args) <= 2
+				assert len(args) >= 2 and len(args) <= 3
 				target = int(args[0], 0)
+				fallthrough = int(args[1], 0)
+				assert fallthrough != 0
 
-				if len(args) == 2:
-					if args[1] == "direct":
+				if len(args) == 3:
+					if args[2] == "direct":
 						direct = True
-					elif args[1] == "indirect":
+					elif args[2] == "indirect":
 						direct = False
 					else:
 						assert False
 				else:
 					direct = True
 
-				return Instruction(addr, size, text, CallType(target, direct))
+				return Instruction(addr, size, text, CallType(target, fallthrough, direct))
 			elif name == "return":
                                 assert not args
                                 return Instruction(addr, size, text, ReturnType())
-			elif name == "halt":
-                                assert not args
-                                return Instruction(addr, size, text, HaltType())
 			else:
 				assert False
 

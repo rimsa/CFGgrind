@@ -9,7 +9,6 @@ class Type(object):
 		BRANCH   = 3
 		CALL     = 4
 		RETURN   = 5
-		HALT   = 6
 
 	def __init__(self, type):
 		assert isinstance(type, Type.Id)
@@ -85,7 +84,7 @@ class BranchType(Type):
 		return "branch(@0x%x, @0x%x, %s)" % (self.target, self.fallthrough, ("direct" if self.direct else "indirect"))
 
 class CallType(Type):
-	def __init__(self, target, direct = True):
+	def __init__(self, target, fallthrough, direct = True):
 		if (target == 0):
 			assert not direct
 		else:
@@ -93,11 +92,16 @@ class CallType(Type):
 
 		Type.__init__(self, Type.Id.CALL)
 		self._target = target
+		self._fallthrough = fallthrough
 		self._direct = direct
 
 	@property
 	def target(self):
 		return self._target
+
+	@property
+	def fallthrough(self):
+		return self._fallthrough
 
 	@property
 	def direct(self):
@@ -108,7 +112,8 @@ class CallType(Type):
 		return not self._direct
 
 	def __str__(self):
-		return "call(@0x%x, %s)" % (self.target, ("direct" if self.direct else "indirect"))
+		return "call(@0x%x, @0x%x, %s)" % (self.target, self.fallthrough,
+					("direct" if self.direct else "indirect"))
 
 class ReturnType(Type):
 	def __init__(self):
@@ -116,13 +121,6 @@ class ReturnType(Type):
 
 	def __str__(self):
 		return "return"
-
-class HaltType(Type):
-	def __init__(self):
-		Type.__init__(self, Type.Id.HALT)
-
-	def __str__(self):
-		return "halt"
 
 class Instruction(object):
 	_all = {}

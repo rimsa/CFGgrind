@@ -13,7 +13,7 @@ class Node(object):
 		BASICBLOCK = 2
 		PHANTOM    = 3
 		EXIT       = 4
-		TERM       = 5
+		HALT       = 5
 
 	def __init__(self, type):
 		assert isinstance(type, Node.Type)
@@ -144,18 +144,18 @@ class Exit(Node):
 		return "exit"
 
 
-class Term(Node):
+class Halt(Node):
 	def __init__(self):
-		Node.__init__(self, Node.Type.TERM)
+		Node.__init__(self, Node.Type.HALT)
 
 	def dot(self, simplified = True, padding = ""):
-		str = padding + "Term"
+		str = padding + "Halt"
 		if (not simplified):
 			str += " [label=\"\",width=0.3,height=0.3,shape=square,fillcolor=black,style=filled,peripheries=2]"
 		return str
 
 	def __str__(self):
-		return "term"
+		return "halt"
 
 class CFG(object):
 	def __init__(self, addr, name = "unknown"):
@@ -164,8 +164,8 @@ class CFG(object):
 		self._name = name
 		self._entry = Entry()
 		self._exit = Exit()
-		self._term = Term()
-		self._nodes = [self._entry, self._exit, self._term]
+		self._halt = Halt()
+		self._nodes = [self._entry, self._exit, self._halt]
 		self._edges = []
 		self._valid = False
 
@@ -190,8 +190,8 @@ class CFG(object):
 		return self._exit
 
 	@property
-	def term(self):
-		return self._term
+	def halt(self):
+		return self._halt
 
 	@property
 	def nodes(self):
@@ -335,7 +335,7 @@ class CFG(object):
 
 	def _check(self):
 		exit_ok = False
-		term_ok = False
+		halt_ok = False
 		for node in self._nodes:
 			p = len(self.preds(node))
 			s = len(self.succs(node))
@@ -346,14 +346,14 @@ class CFG(object):
 			elif (node == self._exit):
 				assert s == 0
 				exit_ok = p > 0
-			elif (node == self._term):
+			elif (node == self._halt):
 				assert s == 0
-				exit_term = p > 0
+				halt_ok = p > 0
 			else:
 				if (p == 0 or s == 0):
 					return False
 
-		return exit_ok or term_ok
+		return exit_ok or halt_ok
 
 	def __str__(self):
 		cfg = "(["
