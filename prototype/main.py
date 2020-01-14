@@ -8,9 +8,12 @@ from machine import *
 from config import *
 from state import *
 
-def write_cfg(cfg, working):
+__DEBUGGING__ = True
+__CACHING__   = False
+
+def write_cfg(cfg, prefix = "cfg", working = None):
 	global total
-	with open("cfg%03d.dot" % total, "w") as fd:
+	with open("%s%03d.dot" % (prefix, total), "w") as fd:
 		fd.write(cfg.dot(working))
 	total = total + 1
 
@@ -52,9 +55,8 @@ def process_group(cfg, working, group):
 				# The leader of this node must match the instruction.
 				assert node.group.leader == instr
 
-				# Make it a successor of the working not if it is not already.
-				if not (node in cfg.succs(working)):
-					cfg.add_edge(Edge(working, node))
+				# Make it a successor of the working or update count.
+				cfg.add_edge(working, node, 1)
 
 				# Make this node the working node.
 				working = node
@@ -79,7 +81,7 @@ def process_group(cfg, working, group):
 				# make it the new working node.
 				else:
 					node = cfg.add_node(BasicBlock(Group(instr)))
-					cfg.add_edge(Edge(working, node))
+					cfg.add_edge(working, node, 1)
 					working = node
 
 		# Make the next instruction in the working block the current for the next iteration.
@@ -120,12 +122,11 @@ def process_type(mapping, state, type, target_addr):
 				else:
 					node = state.current.cfg.add_node(Phantom(addr))
 
-				# Connect the working with this node if it not a
-				# successor already.
-				if not (node in state.current.cfg.succs(state.current.working)):
-					state.current.cfg.add_edge(Edge(state.current.working, node))
+				# Connect the working with this node or update count.
+				state.current.cfg.add_edge(state.current.working, node, 0)
 
-		write_cfg(state.current.cfg, state.current.working)
+		if __DEBUGGING__:
+			write_cfg(state.current.cfg, "step", state.current.working)
 
 	# For call instruction, find the target cfg and added to the call list of
 	# the working node. Then. save the current state with the return address
@@ -136,10 +137,10 @@ def process_type(mapping, state, type, target_addr):
 		called = mapping.setdefault(target_addr, CFG(target_addr))
 
 		# Add the called cfg to the call list of the working node.
-		if not (called in state.current.working.calls):
-			state.current.working.add_call(called)
+		state.current.working.add_call(called, 1)
 
-		write_cfg(state.current.cfg, state.current.working)
+		if __DEBUGGING__:
+			write_cfg(state.current.cfg, "step", state.current.working)
 
 		# Push the current state to the call stack with the
 		# expected return address.
@@ -147,19 +148,23 @@ def process_type(mapping, state, type, target_addr):
 
 		# Update the current state with the called cfg and its entry node.
 		state.current = (called, called.entry)
-		write_cfg(state.current.cfg, state.current.working)
+
+		if __DEBUGGING__:
+			write_cfg(state.current.cfg, "step", state.current.working)
 
 	# For return instructions, first count how many calls are stacked until it
 	# reaches the correct return number.
 	elif isinstance(type, ReturnType):
 		pops = state.callstack.pops_count(target_addr)
 		while pops > 0:
-			# Connect working to the exit node if not existent.
-			if not (state.current.cfg.exit in state.current.cfg.succs(state.current.working)):
-				state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.exit))
+			# Connect the exit node or update count.
+			state.current.cfg.add_edge(state.current.working,
+								state.current.cfg.exit, 1)
 
-			write_cfg(state.current.cfg, state.current.cfg.exit)
+			if __DEBUGGING__:
+				write_cfg(state.current.cfg, "step", state.current.cfg.exit)
 
+			# Pop the current from the call stack.
 			state.current = state.callstack.pop()
 			pops -= 1
 
@@ -177,40 +182,56 @@ def process_program(mapping, machine):
 		if not state.current:
 			initial = mapping.setdefault(addr, CFG(addr))
 			state.current = (initial, initial.entry)
-			write_cfg(state.current.cfg, state.current.working)
+
+			if __DEBUGGING__:
+				write_cfg(state.current.cfg, "step", state.current.working)
 		else:
 			assert isinstance(state.current.working, BasicBlock)
 			state = process_type(mapping, state, state.current.working.group.tail.type, addr)
 
-		# Check if we processed this group from this working point.
-		idx = addr % CACHE_SIZE
-		cached_group, cached_working = state.current.working.cache[idx]
-		if cached_group == group:
-			# In this case, just use the next working from the start.
-			state.current.working = cached_working
+		if __CACHING__:
+			# Check if we processed this group from this working point.
+			idx = addr % CACHE_SIZE
+			cached_group, cached_working, cached_count = state.current.working.cache[idx]
+			if cached_group == group:
+				# And update the count.
+				state.current.working.cache[idx] = (cached_group, cached_working, cached_count + 1)
+
+				# In this case, just use the next working from the start.
+				state.current.working = cached_working
+			else:
+				if cached_count > 0:
+					state.current.cfg.flush_counts(state.current.working, cached_group, cached_working, cached_count)
+
+				# Save the working pointer before processing the group.
+				prev_working = state.current.working
+				# Process the group and update working.
+				state.current.working = process_group(state.current.cfg, state.current.working, group)
+				# Add the new working node to the cache.
+				prev_working.cache[idx] = (group, state.current.working, 0)
 		else:
-			# Save the working pointer before processing the group.
-			prev_working = state.current.working
-			# Process the group and update working.
 			state.current.working = process_group(state.current.cfg, state.current.working, group)
-			# Add the new working node to the cache.
-			prev_working.cache[idx] = (group, state.current.working)
 
-		write_cfg(state.current.cfg, state.current.working)
+		if __DEBUGGING__:
+			write_cfg(state.current.cfg, "step", state.current.working)
 
-	# At the end of the machine execution, connect the working node with the halt node.
-	if not (state.current.cfg.halt in state.current.cfg.succs(state.current.working)):
-		state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.halt))
+	# At the end of the machine execution, connect the working node with the halt node
+	# or update the count, including all the pending current's in the call stack.
+	while state.current:
+		state.current.cfg.add_edge(state.current.working, state.current.cfg.halt, 1)
 
-	write_cfg(state.current.cfg, state.current.cfg.halt)
+		if __DEBUGGING__:
+			write_cfg(state.current.cfg, "step", state.current.cfg.halt)
 
-	# Do the same if there are pending working nodes in the call stack.
-	while state.callstack:
-		state.current = state.callstack.pop()
-		if not (state.current.cfg.halt in state.current.cfg.succs(state.current.working)):
-			state.current.cfg.add_edge(Edge(state.current.working, state.current.cfg.halt))
+		state.current = state.callstack.pop() if state.callstack else None
 
-		write_cfg(state.current.cfg, state.current.cfg.halt)
+	if __CACHING__:
+		# Flush all caching
+		for cfg in mapping.values():
+			for src in cfg.nodes:
+				for (group, dst, count) in src.cache:
+					if count > 0:
+						cfg.flush_counts(src, group, dst, count)
 
 	return mapping
 
@@ -219,4 +240,12 @@ if len(sys.argv) != 2:
 	exit(1)
 
 total = 1
-process_program({}, Machine(sys.argv[1]))
+mapping = {}
+mapping = process_program(mapping, Machine(sys.argv[1]))
+
+total = 1
+for addr in mapping:
+	cfg = mapping[addr]
+	assert cfg.is_valid()
+
+	write_cfg(cfg)

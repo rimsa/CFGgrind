@@ -4,9 +4,6 @@ from instr import *
 from group import *
 from config import *
 
-from collections import namedtuple
-Edge = namedtuple('Edge', 'src dst')
-
 class Node(object):
 	class Type(Enum):
 		ENTRY      = 1
@@ -18,7 +15,7 @@ class Node(object):
 	def __init__(self, type):
 		assert isinstance(type, Node.Type)
 		self._type = type
-		self._cache = [ (None, None) for _ in range(CACHE_SIZE) ]
+		self._cache = [ (None, None, 0) for _ in range(CACHE_SIZE) ]
 
 	@property
 	def type(self):
@@ -27,6 +24,36 @@ class Node(object):
 	@property
 	def cache(self):
 		return self._cache
+
+class Edge(object):
+	def __init__(self, src, dst, count):
+		self._src = src
+		self._dst = dst
+		self._count = count
+
+	@property
+	def src(self):
+		return self._src
+
+	@property
+	def dst(self):
+		return self._dst
+
+	@dst.setter
+	def dst(self, dst):
+		self._dst = dst
+
+	@property
+	def count(self):
+		return self._count
+
+	@count.setter
+	def count(self, count):
+		self._count = count
+
+	def updateCount(self, count):
+		assert count >= 0
+		self._count += count
 
 class Entry(Node):
 	def __init__(self):
@@ -38,11 +65,14 @@ class Entry(Node):
 			str += " [label=\"\",width=0.3,height=0.3,shape=circle,fillcolor=black,style=filled]"
 		return str
 
+	def __str__(self):
+		return "entry"
+
 class BasicBlock(Node):
 	def __init__(self, group, calls = None):
 		Node.__init__(self, Node.Type.BASICBLOCK)
 		self._group = group
-		self._calls = calls if calls else []
+		self._calls = calls if calls else {}
 
 	@property
 	def group(self):
@@ -60,12 +90,12 @@ class BasicBlock(Node):
 	def size(self):
 		return self._group.size()
 
-	def add_call(self, cfg):
-		assert (not cfg in self._calls);
-		self._calls.append(cfg)
-
-	def add_calls(self, calls):
-		self._calls.append(calls)
+	def add_call(self, cfg, count):
+		if cfg.addr in self._calls:
+			_, prev_count = self._calls[cfg.addr]
+			self._calls[cfg.addr] = (cfg, prev_count + count)
+		else:
+			self._calls[cfg.addr] = (cfg, count)
 
 	def is_direct(self):
 		t = self._group.tail.type
@@ -76,7 +106,7 @@ class BasicBlock(Node):
 
 	def dot(self, simplified = True, padding = ""):
 		str = padding + "\"0x%x\"" % self.addr
-		if (not simplified):
+		if not simplified:
 			str += " [label=\"{\n"
 			str += padding + "  0x%x [%d]\\l\n" % (self.addr, self.size)
 			str += padding + "  | [instrs]\\l\n"
@@ -85,8 +115,9 @@ class BasicBlock(Node):
 					(instr.addr, instr.size, self._escape(instr.text))
 			if (len(self._calls) > 0):
 				str += padding + "  | [calls]\\l\n"
-				for cfg in self._calls:
-					str += padding + "  &nbsp;&nbsp;0x%x (%s)\\l\n" % (cfg.addr, cfg.name)
+				for addr in self._calls:
+					cfg, count = self._calls[addr]
+					str += padding + "  &nbsp;&nbsp;0x%x \{%d\} (%s)\\l\n" % (addr, count, cfg.name)
 			str += padding + "}\"]"
 		return str
 
@@ -99,12 +130,15 @@ class BasicBlock(Node):
 	def __str__(self, simplified = True):
 		bb = "basicblock(group: %s, calls: [" % (self._group.__str__(simplified))
 		first = True
-		for call in self._calls:
+		for addr in self._calls:
 			if (first):
 				first = False
 			else:
 				bb += ", "
-			bb += "@0x%x" % call.addr
+			bb += "@0x%x" % addr
+			if not simplified:
+				_, count = self._calls[addr]
+				bb += "{%d}" % count
 		bb += "])"
 		return bb
 
@@ -178,8 +212,8 @@ class CFG(object):
 		return self._name if self._name else "unknown"
 
 	@name.setter
-	def name(self, value):
-		self._name = value
+	def name(self, name):
+		self._name = name
 
 	@property
 	def entry(self):
@@ -214,17 +248,27 @@ class CFG(object):
 		self._dirty = True
 		return node
 
-	def add_edge(self, edge):
-		assert isinstance(edge, Edge)
-		assert not (edge in self._edges)
-		assert edge.src in self._nodes
-		assert edge.dst in self._nodes
-		if isinstance(edge.src, Entry):
-			assert not self.succs(edge.src)
+	def _find_edge(self, src, dst):
+		for edge in self._edges:
+			if edge.src == src and edge.dst == dst:
+				return edge
+		return None
+
+	def add_edge(self, src, dst, count):
+		assert count >= 0
+		edge = self._find_edge(src, dst)
+		if edge:
+			edge.updateCount(count)
 		else:
-			isinstance(edge.src, BasicBlock)
-		assert not isinstance(edge.dst, Entry)
-		self._edges.append(edge)
+			assert src in self._nodes
+			assert dst in self._nodes
+			if isinstance(src, Entry):
+				assert not self.succs(src)
+			else:
+				isinstance(src, BasicBlock)
+			assert not isinstance(dst, Entry)
+			edge = Edge(src, dst, count)
+			self._edges.append(edge)
 		self._dirty = True
 		return edge.dst
 
@@ -237,27 +281,20 @@ class CFG(object):
 	def remove_node(self, node):
 		assert node in self._nodes
 		for pred in self.preds(node):
-			self.remove_edge(Edge(pred, node))
+			self.remove_edge(pred, node)
 		for succ in self.succs(node):
-			self.remove_edge(Edge(node, succ))
+			self.remove_edge(node, succ)
 		self._nodes.remove(node)
 
-	def remove_nodes(self, nodes):
-		for node in nodes:
-			self.remove_node(node)
-
-	def remove_edge(self, edge):
-		assert isinstance(edge, Edge)
-		assert edge in self._edges
+	def remove_edge(self, src, dst):
+		edge = self._find_edge(src, dst)
+		assert edge
 		self._edges.remove(edge)
 
-	def remove_edges(self, edges):
-		for edge in edges:
-			self.remove_edge(edge)
-
 	def is_valid(self):
-		if (self._dirty):
+		if self._dirty:
 			self._valid = self._check()
+			self._dirty = False
 
 		return self._valid
 
@@ -281,7 +318,7 @@ class CFG(object):
 		self.remove_node(old)
 		self.add_node(new)
 		for p in preds:
-			self.add_edge(Edge(p, new))
+			self.add_edge(p, new, 0)
 		return new
 
 	def split(self, node, addr):
@@ -289,19 +326,77 @@ class CFG(object):
 		assert isinstance(node, BasicBlock)
 		assert node.group.leader.addr != addr
 		assert node.group.has_instr_with_addr(addr)
-		preds = self.preds(node)
-		for pred in preds:
-			self.remove_edge(Edge(pred, node))
+
 		instr = node.group.pop_leader()
 		new = BasicBlock(Group(instr))
 		self.add_node(new)
 		while node.group.leader.addr != addr:
 			instr = node.group.pop_leader()
 			new.group.add_instr(instr)
-		for pred in preds:
-			self.add_edge(Edge(pred, new))
-		self.add_edge(Edge(new, node))
+
+		count = 0
+		for pred in self.preds(node):
+			edge = self._find_edge(pred, node)
+			assert edge
+			count += edge.count
+			edge.dst = new
+
+		self.add_edge(new, node, count)
 		return node
+
+	def flush_counts(self, src, group, dst, count):
+		assert count > 0
+		size = 0
+		while size < group.size():
+			tmp = self.addr2node(group.leader.addr + size)
+			assert tmp
+
+			edge = self._find_edge(src, tmp)
+			assert edge
+			edge.updateCount(count)
+
+			size += tmp.size
+			src = tmp
+		assert size == group.size()
+		assert src == dst
+		self._dirty = True
+
+	def _check(self):
+		has_exit = False
+		has_halt = False
+		for node in self._nodes:
+			preds_total = preds_count = 0
+			for pred in self.preds(node):
+				edge = self._find_edge(pred, node)
+				preds_count += edge.count
+				preds_total += 1
+
+			succs_total = succs_count = 0
+			for succ in self.succs(node):
+				edge = self._find_edge(node, succ)
+				succs_count += edge.count
+				succs_total += 1
+
+			if (node == self._entry):
+				if preds_total != 0 or succs_total == 0 or succs_count == 0:
+					return False
+			elif (node == self._exit):
+				if preds_total > 0:
+					if succs_total != 0 or preds_count == 0:
+						return False
+
+					has_exit = True
+			elif (node == self._halt):
+				if preds_total > 0:
+					if succs_total != 0 or preds_count == 0:
+						return False
+
+					has_halt = True
+			else:
+				if preds_total == 0 or succs_total == 0 or preds_count != succs_count:
+					return False
+
+		return has_exit or has_halt
 
 	def dot(self, working = None):
 		str = "digraph \"0x%x\" {\n" % self._addr
@@ -315,16 +410,19 @@ class CFG(object):
 			if (node == self.entry or len(self.preds(node))):
 				str += node.dot(False, "  ") + "\n"
 
-			for succ in self.succs(node):
-				str += "  " + node.dot() + " -> " + succ.dot()
-				if (isinstance(succ, Phantom)):
-					str += " [style=dashed]"
-				str += "\n"
-
 			if (isinstance(node, BasicBlock) and node.is_indirect()):
 				str += "  \"Unknown%d\" [label=\"?\", shape=none]\n" % unknown
 				str += "  \"0x%x\" -> \"Unknown%d\" [style=dashed]\n" % (node.addr, unknown)
 				unknown += 1
+
+		for edge in self._edges:
+			str += "  " + edge.src.dot() + " -> " + edge.dst.dot()
+			if isinstance(edge.dst, Phantom):
+				assert edge.count == 0
+				str += " [style=dashed]"
+			elif edge.count > 0:
+				str += " [label=\"%d\"]" % edge.count
+			str += "\n"
 
 		if working:
 			str += "  \"working\" [label=\"working\", fillcolor=red, fontcolor=white, style=\"rounded,filled\", shape=diamond]\n"
@@ -332,28 +430,6 @@ class CFG(object):
 
 		str += "}\n"
 		return str
-
-	def _check(self):
-		exit_ok = False
-		halt_ok = False
-		for node in self._nodes:
-			p = len(self.preds(node))
-			s = len(self.succs(node))
-			if (node == self._entry):
-				assert p == 0
-				if (s == 0):
-					return False
-			elif (node == self._exit):
-				assert s == 0
-				exit_ok = p > 0
-			elif (node == self._halt):
-				assert s == 0
-				halt_ok = p > 0
-			else:
-				if (p == 0 or s == 0):
-					return False
-
-		return exit_ok or halt_ok
 
 	def __str__(self):
 		cfg = "(["
@@ -366,11 +442,11 @@ class CFG(object):
 			cfg += str(node)
 		cfg += "], ["
 		first = True
-		for (frm, to) in self._edges:
+		for edge in self._edges:
 			if (first):
 				first = False
 			else:
 				cfg += ", "
-			cfg += "(%s, %s)" % (str(frm), str(to))
+			cfg += "(%s, %s, %d)" % (edge.src, edge.dst, edge.count)
 		cfg += "])"
 		return cfg
