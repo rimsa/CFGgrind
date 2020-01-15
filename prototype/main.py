@@ -90,7 +90,7 @@ def process_group(cfg, working, group):
 
 	return working
 
-def process_type(mapping, state, type, target_addr):
+def process_type(mapping, type, target_addr):
 	# For jump instruction, do nothing since it
 	# will be handled in the next iteration when
 	# processing the next group.
@@ -171,11 +171,9 @@ def process_type(mapping, state, type, target_addr):
 	else:
 		assert False, "unreachable code"
 
-	return state
+	return mapping
 
 def process_program(mapping, machine):
-	state = State(None, [])
-
 	# The next group of instruction that will be executed.
 	for group in machine.run():
 		addr = group.leader.addr
@@ -187,7 +185,7 @@ def process_program(mapping, machine):
 				write_cfg(state.current.cfg, "step", state.current.working)
 		else:
 			assert isinstance(state.current.working, BasicBlock)
-			state = process_type(mapping, state, state.current.working.group.tail.type, addr)
+			mapping = process_type(mapping, state.current.working.group.tail.type, addr)
 
 		if __CACHING__:
 			# Check if we processed this group from this working point.
@@ -240,12 +238,12 @@ if len(sys.argv) != 2:
 	exit(1)
 
 total = 1
-mapping = {}
-mapping = process_program(mapping, Machine(sys.argv[1]))
+state = State(None, [])
+cfgs = process_program({}, Machine(sys.argv[1]))
 
 total = 1
-for addr in mapping:
-	cfg = mapping[addr]
+for addr in cfgs:
+	cfg = cfgs[addr]
 	assert cfg.is_valid()
 
 	write_cfg(cfg)
