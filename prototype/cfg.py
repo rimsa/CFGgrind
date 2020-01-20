@@ -69,10 +69,11 @@ class Entry(Node):
 		return "entry"
 
 class BasicBlock(Node):
-	def __init__(self, group, calls = None):
+	def __init__(self, group, calls = None, signals = None):
 		Node.__init__(self, Node.Type.BASICBLOCK)
 		self._group = group
 		self._calls = calls if calls else {}
+		self._signals = signals if signals else {}
 
 	@property
 	def group(self):
@@ -81,6 +82,10 @@ class BasicBlock(Node):
 	@property
 	def calls(self):
 		return self._calls
+
+	@property
+	def signals(self):
+		return self._signals
 
 	@property
 	def addr(self):
@@ -96,6 +101,14 @@ class BasicBlock(Node):
 			self._calls[cfg.addr] = (cfg, prev_count + count)
 		else:
 			self._calls[cfg.addr] = (cfg, count)
+
+	def add_signal(self, sigid, cfg, count):
+		if sigid in self._signals:
+			prev_cfg, prev_count = self._signals[sigid]
+			assert cfg.addr == prev_cfg.addr
+			self._signals[sigid] = (cfg, prev_count + count)
+		else:
+			self._signals[sigid] = (cfg, count)
 
 	def is_direct(self):
 		t = self._group.tail.type
@@ -118,6 +131,11 @@ class BasicBlock(Node):
 				for addr in self._calls:
 					cfg, count = self._calls[addr]
 					str += padding + "  &nbsp;&nbsp;0x%x \{%d\} (%s)\\l\n" % (addr, count, cfg.name)
+			if (len(self._signals) > 0):
+				str += padding + "  | [signals]\\l\n"
+				for sigid in self._signals:
+					cfg, count = self._signals[sigid]
+					str += padding + "  &nbsp;&nbsp;%d: 0x%x \{%d\} (%s)\\l\n" % (sigid, cfg.addr, count, cfg.name)
 			str += padding + "}\"]"
 		return str
 
@@ -138,6 +156,16 @@ class BasicBlock(Node):
 			bb += "@0x%x" % addr
 			if not simplified:
 				_, count = self._calls[addr]
+				bb += "{%d}" % count
+		bb += "], signals: ["
+		for sigid in self._signals:
+			cfg, count = self._signals[sigid]
+			if (first):
+				first = False
+			else:
+				bb += ", "
+			bb += "@0x%x" % cfg.addr
+			if not simplified:
 				bb += "{%d}" % count
 		bb += "])"
 		return bb

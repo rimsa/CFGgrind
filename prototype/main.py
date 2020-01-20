@@ -68,9 +68,9 @@ def process_group(cfg, working, group):
 			else:
 				# Append the instruction if possible.
 				# It must not be the first instruction in the group,
-				# the node must be a basic block without successors and calls.
+				# the node must be a basic block without successors, calls and signals.
 				if instr != group.leader and isinstance(working, BasicBlock) and \
-						(not working.calls) and (not cfg.succs(working)):
+						(not working.calls) and (not working.signals) and (not cfg.succs(working)):
 					# Since the instructions are in sequence, the instruction must come
 					# immediately after the tail of the working node.
 					assert (working.group.tail.addr + working.group.tail.size) == instr.addr
