@@ -46,6 +46,7 @@ First, get the assembly instructions mapping for better CFG visualization.
 
 Then, use the tool to generate an output file (test.cfg) that can be used later for CFG refinements.
 Also, generate a DOT file for the bubble function (cfg-0x{addr}.dot) with the instructions loaded from the map (test.map).
+For more information on the supported options use the --help switch.
 
     $ valgrind --tool=cfggrind --cfg-outfile=test.cfg --instrs-map=test.map --cfg-dump=bubble ./test 4 8 15 16 23 42
 
@@ -106,7 +107,7 @@ the tail instruction does function calls.
 Also, it has a mapping of activated signal handlers by CFG address with, optionally, invocation
 count (*cfg-addr{:count}*) indexed by the signal id (*signal-id->*).
 The node contains a marker if the tail instruction does an indirect jump or call (*is-indirect*).
-Finally, it has a lista of successor nodes that can be a node address, exit or halt
+Finally, it has a list of successor nodes that can be a node address, exit or halt
 with, optionally, executions count.
 
 For example, the main function of file tests/signal.c can be represented as:
