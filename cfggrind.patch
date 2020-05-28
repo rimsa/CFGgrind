@@ -1,7 +1,8 @@
-diff -urN a/Makefile.am b/Makefile.am
---- a/Makefile.am	2019-04-13 07:56:21.000000000 -0300
-+++ b/Makefile.am	2019-07-22 14:02:57.000000000 -0300
-@@ -7,6 +7,7 @@
+diff --git a/Makefile.am b/Makefile.am
+index 08db834..7c91f54 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -7,6 +7,7 @@ TOOLS = \
  		memcheck \
  		cachegrind \
  		callgrind \
@@ -9,10 +10,11 @@ diff -urN a/Makefile.am b/Makefile.am
  		helgrind \
  		drd \
  		massif \
-diff -urN a/configure.ac b/configure.ac
---- a/configure.ac	2019-04-13 07:56:21.000000000 -0300
-+++ b/configure.ac	2019-07-22 14:03:08.000000000 -0300
-@@ -4698,6 +4698,8 @@
+diff --git a/configure.ac b/configure.ac
+index 524230d..839ab54 100755
+--- a/configure.ac
++++ b/configure.ac
+@@ -4816,6 +4816,8 @@ AC_CONFIG_FILES([
     callgrind/callgrind_annotate
     callgrind/callgrind_control
     callgrind/tests/Makefile

@@ -825,11 +825,11 @@ void CGD_(post_clo_init)(void) {
 						"=> resetting it back to 0\n");
 		VG_(clo_vex_control).iropt_unroll_thresh = 0; // cannot be overridden.
 	}
-	if (VG_(clo_vex_control).guest_chase_thresh != 0) {
+	if (VG_(clo_vex_control).guest_chase) {
 		VG_(message)(Vg_UserMsg,
-				"cfggrind only works with --vex-guest-chase-thresh=0\n"
-						"=> resetting it back to 0\n");
-		VG_(clo_vex_control).guest_chase_thresh = 0; // cannot be overridden.
+				"cfggrind only works with --vex-guest-chase=no\n"
+						"=> resetting it back to 'no'\n");
+		VG_(clo_vex_control).guest_chase = False; // cannot be overridden.
 	}
 
 	CGD_(init_statistics)(&CGD_(stat));
@@ -870,7 +870,7 @@ void CGD_(pre_clo_init)(void) {
 	VG_(clo_px_file_backed) = VexRegUpdSpAtMemAccess; // overridable by the user.
 
 	VG_(clo_vex_control).iropt_unroll_thresh = 0;   // cannot be overridden.
-	VG_(clo_vex_control).guest_chase_thresh = 0;    // cannot be overridden.
+	VG_(clo_vex_control).guest_chase = False;    // cannot be overridden.
 
 	VG_(basic_tool_funcs)(CGD_(post_clo_init), CGD_(instrument),
 			CGD_(fini));
