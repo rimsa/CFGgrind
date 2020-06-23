@@ -159,6 +159,7 @@ void CGD_(set_clo_defaults)(void)
   CGD_(clo).dump_cfgs.fnames = 0;
   CGD_(clo).dump_cfgs.dir    = ".";
   CGD_(clo).instrs_map       = 0;
+  CGD_(clo).mem_mappings     = 0;
 
 #if CGD_ENABLE_DEBUG
   CGD_(clo).verbose = 0;
