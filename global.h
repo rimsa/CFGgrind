@@ -427,8 +427,8 @@ struct _CfgNode {
 
 	struct {
 		Bool has_fallthrough;
-		SmartList* successors;   /* SmartList<CfgNode*> */
-		SmartList* predecessors; /* SmartList<CfgNode*> */
+		SmartList* successors;   /* SmartList<CfgEdge*> */
+		SmartList* predecessors; /* SmartList<CfgEdge*> */
 	} info;
 
 #if CFG_NODE_CACHE_SIZE > 0
