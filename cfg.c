@@ -2829,7 +2829,7 @@ void CGD_(read_cfgs)(Int fd) {
 
 static
 Bool cmp_strings(HChar* str1, HChar* str2) {
-	return str1 != 0 && str2 != 0 && VG_(strcmp)(str1, str2) == 0;
+	return str1 != 0 && str2 != 0 && VG_(strcasecmp)(str1, str2) == 0;
 }
 
 void CGD_(dump_cfg)(CFG* cfg) {

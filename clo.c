@@ -64,17 +64,17 @@ Bool CGD_(process_cmd_line_option)(const HChar* arg)
 #endif
    else if VG_BOOL_CLO(arg, "--emulate-calls", CGD_(clo).emulate_calls) {}
    else if VG_STR_CLO(arg, "--cfg-dump", tmp_str) {
-	   if (VG_(strcmp)(tmp_str, "all") == 0) {
+	   if (VG_(strcasecmp)(tmp_str, "all") == 0) {
 		   CGD_ASSERT(CGD_(clo).dump_cfgs.all == False);
 		   CGD_ASSERT(CGD_(clo).dump_cfgs.addrs == 0);
 		   CGD_ASSERT(CGD_(clo).dump_cfgs.fnames == 0);
 
 		   CGD_(clo).dump_cfgs.all = True;
-	   } else if (VG_(strcmp)(tmp_str, "none") == 0) {
+	   } else if (VG_(strcasecmp)(tmp_str, "none") == 0) {
 		   CGD_ASSERT(CGD_(clo).dump_cfgs.all == False);
 		   CGD_ASSERT(CGD_(clo).dump_cfgs.addrs == 0);
 		   CGD_ASSERT(CGD_(clo).dump_cfgs.fnames == 0);
-	   } else if (VG_(strncmp)(tmp_str, "0x", 2) == 0) {
+	   } else if (VG_(strncasecmp)(tmp_str, "0x", 2) == 0) {
 		   Addr addr;
 
 		   CGD_ASSERT(CGD_(clo).dump_cfgs.all == False);
