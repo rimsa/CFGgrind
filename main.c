@@ -153,7 +153,7 @@ static InstrGroupInfo* next_InstrGroupInfo(CDG_State* cdgs) {
 /*------------------------------------------------------------*/
 
 #if defined(VG_BIGENDIAN)
-# define CGD Iend_BE
+# define CGD_Endness Iend_BE
 #elif defined(VG_LITTLEENDIAN)
 # define CGD_Endness Iend_LE
 #else
