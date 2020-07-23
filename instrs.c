@@ -29,7 +29,13 @@
 
 #define DEFAULT_POOL_SIZE 262144 // 256k instructions
 
-SmartHash* instrs_pool = 0;
+typedef struct _instrs_hash instrs_hash;
+struct _instrs_hash {
+	UInt size, entries;
+	UniqueInstr** table;
+};
+
+instrs_hash pool;
 
 static
 void delete_instr(UniqueInstr* instr) {
@@ -113,28 +119,109 @@ void read_instr_names(void) {
 	}
 }
 
+static __inline__
+UInt instrs_hash_idx(Addr addr, UInt size) {
+	return addr % size;
+}
+
+static
+void resize_instrs_pool(void) {
+    Int i, new_size, conflicts1 = 0;
+    UniqueInstr **new_table, *curr, *next;
+    UInt new_idx;
+
+	// increase table by 50%.
+    new_size  = (Int) (1.5f * pool.size);
+    new_table = (UniqueInstr**) CGD_MALLOC("cgd.instrs.rit.1",
+                                  (new_size * sizeof(UniqueInstr*)));
+    VG_(memset)(new_table, 0, (new_size * sizeof(UniqueInstr*)));
+
+    for (i = 0; i < pool.size; i++) {
+		if (pool.table[i] == 0)
+			continue;
+
+		curr = pool.table[i];
+		while (curr != 0) {
+			next = curr->chain;
+
+			new_idx = instrs_hash_idx(curr->addr, new_size);
+
+			curr->chain = new_table[new_idx];
+			new_table[new_idx] = curr;
+			if (curr->chain)
+				conflicts1++;
+
+			curr = next;
+		}
+    }
+
+    CGD_FREE(pool.table);
+
+    CGD_DEBUG(0, "Resize instructions pool: %u => %d (entries %u, conflicts %d)\n",
+	     pool.size, new_size,
+	     pool.entries, conflicts1);
+
+    pool.size  = new_size;
+    pool.table = new_table;
+    CGD_(stat).instrs_pool_resizes++;
+}
+
+static
+UniqueInstr* lookup_instr(Addr addr) {
+	UniqueInstr* instr;
+	UInt idx;
+
+	CGD_ASSERT(addr != 0);
+
+	idx = instrs_hash_idx(addr, pool.size);
+	instr = pool.table[idx];
+
+	while (instr) {
+		if (instr->addr == addr)
+			break;
+
+		instr = instr->chain;
+	}
+
+	return instr;
+}
+
 void CGD_(init_instrs_pool)() {
-	CGD_ASSERT(instrs_pool == 0);
+	Int size;
 
-	instrs_pool = CGD_(new_smart_hash)(DEFAULT_POOL_SIZE);
+	pool.size = DEFAULT_POOL_SIZE;
+	pool.entries = 0;
 
-	// set the growth rate to half the size.
-	CGD_(smart_hash_set_growth_rate)(instrs_pool, 1.5f);
+	size = pool.size * sizeof(UniqueInstr*);
+	pool.table = (UniqueInstr**) CGD_MALLOC("cgd.instrs.iip.1", size);
+	VG_(memset)(pool.table, 0, size);
 
 	// read instruction names.
 	read_instr_names();
 }
 
 void CGD_(destroy_instrs_pool)() {
-	CGD_ASSERT(instrs_pool != 0);
+	Int i;
 
-	CGD_(smart_hash_clear)(instrs_pool, (void (*)(void*)) delete_instr);
-	CGD_(delete_smart_hash)(instrs_pool);
-	instrs_pool = 0;
+	for (i = 0; i < pool.size; i++) {
+		UniqueInstr* instr = pool.table[i];
+		while (instr) {
+			UniqueInstr* next = instr->chain;
+			delete_instr(instr);
+			instr = next;
+
+			pool.entries--;
+		}
+	}
+
+	CGD_ASSERT(pool.entries == 0);
+
+	CGD_FREE(pool.table);
+	pool.table = 0;
 }
 
 UniqueInstr* CGD_(get_instr)(Addr addr, Int size) {
-	UniqueInstr* instr = CGD_(find_instr)(addr);
+	UniqueInstr* instr = lookup_instr(addr);
 	if (instr) {
 		CGD_ASSERT(instr->addr == addr);
 		if (size != 0) {
@@ -145,19 +232,30 @@ UniqueInstr* CGD_(get_instr)(Addr addr, Int size) {
 			}
 		}
 	} else {
+		UInt idx;
+
+		/* check fill degree of instructions pool and resize if needed (>80%) */
+		pool.entries++;
+		if (10 * pool.entries / pool.size > 8)
+			resize_instrs_pool();
+
+		// Create the instruction.
 		instr = (UniqueInstr*) CGD_MALLOC("cgd.instrs.gi.1", sizeof(UniqueInstr));
 		VG_(memset)(instr, 0, sizeof(UniqueInstr));
 		instr->addr = addr;
 		instr->size = size;
 
-		CGD_(smart_hash_put)(instrs_pool, instr, (HWord (*)(void*)) CGD_(instr_addr));
+		/* insert into instructions pool */
+		idx = instrs_hash_idx(addr, pool.size);
+		instr->chain = pool.table[idx];
+		pool.table[idx] = instr;
 	}
 
 	return instr;
 }
 
 UniqueInstr* CGD_(find_instr)(Addr addr) {
-	return (UniqueInstr*) CGD_(smart_hash_get)(instrs_pool, addr, (HWord (*)(void*)) CGD_(instr_addr));
+	return lookup_instr(addr);
 }
 
 Addr CGD_(instr_addr)(UniqueInstr* instr) {

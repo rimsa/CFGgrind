@@ -66,6 +66,7 @@ static void CGD_(init_statistics)(Statistics* s) {
 	s->bb_hash_resizes = 0;
 	s->call_stack_resizes = 0;
 	s->cfg_hash_resizes = 0;
+	s->instrs_pool_resizes = 0;
 
 	s->full_debug_BBs = 0;
 	s->file_line_debug_BBs = 0;

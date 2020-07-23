@@ -128,6 +128,7 @@ struct _Statistics {
   Int  bb_hash_resizes;
   Int  call_stack_resizes;
   Int  cfg_hash_resizes;
+  Int  instrs_pool_resizes;
 
   Int  full_debug_BBs;
   Int  file_line_debug_BBs;
@@ -179,6 +180,8 @@ struct _UniqueInstr {
 	Int size;
 	HChar* name;
 	InstrDesc* desc;
+
+  UniqueInstr* chain;
 };
 
 /* 
