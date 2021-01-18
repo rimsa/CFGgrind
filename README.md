@@ -78,37 +78,46 @@ Update the image with the complete CFG now.
 ## Output Format
 
 The output format, enabled by the --cfg-outfile argument, has two main formats: **cfg** and **node**.
+Optional sections in this format are marked with *curly brackets*.
 
-A **cfg** has an address (*cfg-addr*), and optionally (*curly brackets*) the number of invocations separated by
-a colon (*:invocations*), if profiling is enabled at compile-time.
-Also, it has a function name (*cfg-name*) in double quotes if identified in the debugging symbols,
-or unknown otherwise.
-Finally, it has a flag (*is-complete*) indicating if this CFG is complete -- it has no indirect jumps
-or calls, and it has no phantom nodes (nodes never executed during runtime).
+A **cfg** must have an address (*cfg-addr*).
+If profiling is enabled at compile-time, this address can be followed by an
+optional number of invocations separated by a colon (*:invocations*).
+The cfg must have a function name (*cfg-name*) in double quotes.
+The name can be obtained from the debugging symbols if present, or marked as
+*unknown* otherwise.
+Finally, the cfg has a flag (*is-complete*) indicating if this CFG is complete -- it has no indirect jumps or calls,
+and it has no phantom nodes (nodes never executed during runtime).
 
 	[cfg cfg-addr{:invocations} cfg-name is-complete]
 
-A **node** models a basic block with instructions, a list of function calls addresses,
-a list of signals id that contains list of calls handlers, a flag indication if the last instruction of the
-node is an indirect jump or call, and a list of successors nodes (node address, exit or halt).
-A successor node with an address not found in the output format is a *phantom* node.
-Note that there is no special entry node in the representation: there is only a single/unique node
-that has the same address of its CFG, that should be executed first in case of this CFG invocation.
+A **node** models a basic block with instructions, a list of function calls
+addresses, a list of signal ids that contains a list of calls handlers, a flag
+indicating if the last instruction of the node is an indirect jump or call, and
+a list of successors nodes (node address, *exit* or *halt*).
+A successor node with an unmapped address is a *phantom* node.
+Note that there is no special entry node in this representation.
+There is only a single/unique node that has the same address of its CFG that
+should be executed first in case of a invocation of this CFG.
 
 	[node cfg-addr node-addr node-size [list of instr-size] [list of cfg-addr{:count}]
 	      [list of signal-id->cfg-addr{:count}] is-indirect [list of succ-node{:count}]]
 
-A node must belong to a CFG (*cfg-addr*), and it is identified by its starting address (*node-addr*)
-and size (*node-size*).
-Then, a node has a non-empty list of instruction size (*list of instr-size*) between brackets
-that must add up to *node-size*.
-It has a list of CFG address with, optionally, invocation count (*list of cfg-addr{:count}*) if
-the tail instruction does function calls.
-Also, it has a mapping of activated signal handlers by CFG address with, optionally, invocation
-count (*cfg-addr{:count}*) indexed by the signal id (*signal-id->*).
+A node must belong to a CFG (*cfg-addr*) and it is identified by its starting
+node address (*node-addr*) and node size (*node-size*).
+Then, a node has a non-empty list of sizes for each of its instructions
+(*list of instr-size*) between brackets.
+The sum of the size of these instructions must add up to the *node-size*.
+The node has a list of called functions, where each function is index by the address of its CFG
+followed by an optional invocation count (*list of cfg-addr{:count}*).
+This list is empty if there are no function calls for this node.
+Also, the node has a mapping of called signal handlers indexed by the signal id (*signal-id*).
+Each signal is thus mapped to a CFG (*->cfg-addr*) followed by an optional invocation count (*{:count}*).
+Similarly, this list is empty if no signal handlers are activated by this node.
 The node contains a marker if the tail instruction does an indirect jump or call (*is-indirect*).
-Finally, it has a list of successor nodes that can be a node address, exit or halt
-with, optionally, executions count.
+Finally, the node has a list of successor nodes (*list of succ-node*), where each node (*succ-node*) is
+an address, *exit* or *halt*.
+These successor nodes can be followed, optionally, by its execution counts.
 
 For example, the main function of file tests/signal.c can be represented as:
 
