@@ -7,7 +7,8 @@ include $(top_srcdir)/Makefile.tool.am
 pkginclude_HEADERS =
 
 bin_SCRIPTS = \
-	cfggrind_asmmap
+	cfggrind_asmmap \
+	cfggrind_info
 
 noinst_HEADERS = \
 	global.h

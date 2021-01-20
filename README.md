@@ -75,6 +75,85 @@ Update the image with the complete CFG now.
   <img src="tests/cfg-unordered.png?raw=true" width=540" heigh="1092">
 </p>
 
+## Statistics
+
+The output produced by CFGgrind can be used to extract statistics information
+from a program execution.
+The statistics is provided by the **cfggrind_info** script, that can be
+configured to display information for the whole program or for functions.
+It can output the statistics in two formats: json and csv.
+
+To obtain the whole program statistics, run:
+
+    $ cfggrind_info -s program -m json test.cfg
+    {
+      functions: 202,
+      complete: 37,
+      incomplete: 165,
+      blocks: 2421,
+      phantoms: 801,
+      edges: 4173,
+      static: {
+        instructions: 10509,
+        calls: 314,
+        signals: 0
+      },
+      dynamic: {
+        instructions: 178722,
+        calls: 949,
+        signals: 0
+      }
+    }
+
+To obtain statistics for functions, enable it with _-s functions_. To display it
+for specific functions, combine with the _-f_ option.
+
+    $ cfggrind_info -f "test::main" "test::bubble" -s functions -m json test.cfg
+    [
+        {
+            cfg: 0x4006de,
+            invoked: 1,
+            complete: true,
+            blocks: 13,
+            phantoms: 0,
+            exit: true,
+            halt: false,
+            edges: 16,
+            static: {
+                instructions: 67,
+                calls: 6,
+                signals: 0
+            },
+            dynamic: {
+                instructions: 243,
+                calls: 16,
+                signals: 0
+            },
+            name: 'test::main(18)'
+        },
+        {
+            cfg: 0x400607,
+            invoked: 1,
+            complete: false,
+            blocks: 8,
+            phantoms: 1,
+            exit: true,
+            halt: false,
+            edges: 12,
+            static: {
+                instructions: 35,
+                calls: 0,
+                signals: 0
+            },
+            dynamic: {
+                instructions: 348,
+                calls: 0,
+                signals: 0
+            },
+            name: 'test::bubble(4)'
+        }
+    ]
+
 ## Output Format
 
 The output format, enabled by the --cfg-outfile argument, has two main formats: **cfg** and **node**.

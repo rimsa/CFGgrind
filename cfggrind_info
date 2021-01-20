@@ -1,0 +1,685 @@
+#!/usr/bin/env python3
+
+import re
+import sys
+import argparse
+from enum import Enum
+
+class Instr:
+	def __init__(self, addr, size = 0, name = '???'):
+		self._addr = addr
+		self._size = size
+		self._name = name
+
+	@property
+	def addr(self):
+		return self._addr
+
+	@property
+	def size(self):
+		return self._size
+
+	@size.setter
+	def size(self, size):
+		if self._size == 0:
+			assert size > 0
+			self._size = size
+		else:
+			assert self._size == size
+
+	@property
+	def name(self):
+		return self._name
+
+	@name.setter
+	def name(self, name):
+		self._name = name
+
+	def __str__(self, dot = False):
+		if dot:
+			return '     &nbsp;&nbsp;{0} \\<+{1}\\>: {2}\\l\n'.format( \
+				hex(self.addr), self.size, re.sub(r'(<|>)', r'\\\1', self.name))
+		else:
+			return '{0}:{1} ({2})'.format(hex(self.addr), self.size, self.name)
+
+class NodeType(Enum):
+	ENTRY = 1
+	EXIT = 2
+	HALT = 3
+	PHANTOM = 4
+	BLOCK = 5
+
+class Node:
+	def __init__(self, type, addr = 0):
+		self._type = type
+		if addr == 0:
+			assert type == NodeType.ENTRY or \
+					type == NodeType.EXIT or \
+					type == NodeType.HALT
+		else:
+			assert type == NodeType.PHANTOM or \
+					type == NodeType.BLOCK
+			self._addr = addr
+
+	@property
+	def type(self):
+		return self._type
+
+	@property
+	def addr(self):
+		assert self.type in (NodeType.PHANTOM, NodeType.BLOCK)
+		return self._addr
+
+	@property
+	def size(self):
+		assert self.type == NodeType.BLOCK
+		return sum(instr.size for instr in self._instrs)
+
+	@property
+	def instrs(self):
+		assert self.type == NodeType.BLOCK
+		return self._instrs
+
+	@instrs.setter
+	def instrs(self, instrs):
+		assert instrs
+		assert self.type == NodeType.PHANTOM
+
+		self._type = NodeType.BLOCK
+		self._instrs = instrs
+		self._calls = []
+		self._signals = []
+		self._indirect = False
+
+	@property
+	def calls(self):
+		return self._calls
+
+	@calls.setter
+	def calls(self, calls):
+		assert self.type == NodeType.BLOCK and not self.calls
+		self._calls = calls
+
+	@property
+	def signals(self):
+		return self._signals
+
+	@signals.setter
+	def signals(self, signals):
+		assert self.type == NodeType.BLOCK and not self.signals
+		self._signals = signals
+
+	@property
+	def indirect(self):
+		assert self.type == NodeType.BLOCK
+		return self._indirect
+
+	@indirect.setter
+	def indirect(self, indirect):
+		assert self.type == NodeType.BLOCK
+		self._indirect = indirect
+
+	def __str__(self, dot = False):
+		if dot:
+			if self.type == NodeType.ENTRY:
+				return '  Entry [label="",width=0.3,height=0.3,shape=circle,fillcolor=black,style=filled]'
+			elif self.type == NodeType.EXIT:
+				return '  Exit [label="",width=0.3,height=0.3,shape=circle,fillcolor=black,style=filled,peripheries=2]'
+			elif self.type == NodeType.HALT:
+				return '  Halt [label="",width=0.3,height=0.3,shape=square,fillcolor=black,style=filled,peripheries=2]'
+			elif self.type == NodeType.PHANTOM:
+				return '  "{0}" [label="{{\n' \
+                       '    {0}\\l\n' \
+					   '  }}", style=dashed]'.format(hex(self.addr))
+			else:
+				assert self.type == NodeType.BLOCK
+				ss = '  "{0}" [label="{{\n' \
+						'     {0} [{1}]\\l\n' \
+						'     | [instrs]\\l\n'.format(hex(self.addr), self.size)
+				for instr in self.instrs:
+					ss += instr.__str__(True)
+
+				if self.calls:
+					ss += '     | [calls]\\l\n'
+					for call in self.calls:
+						ss += '     &nbsp;&nbsp;{0} \\{{{1}\\}} ({2})\\l\n'.format( \
+									hex(call[0].addr), call[1], \
+										re.sub(r'(<|>)', r'\\\1', call[0].name))
+
+				if self.signals:
+					ss += '     | [signals]\\l\n'
+					for signal in self.signals:
+						ss += '     &nbsp;&nbsp;{0}: {1} \\{{{2}\\}} ({3})\\l\n'.format( \
+									signal[0], hex(signal[1].addr), signal[2], \
+										re.sub(r'(<|>)', r'\\\1', signal[1].name))
+
+				ss += '  }"]'
+				return ss
+		else:
+			name = {
+				NodeType.ENTRY: 'Entry',
+				NodeType.EXIT: 'Exit',
+				NodeType.HALT: 'Halt',
+			}.get(self.type)
+			if not name:
+				name = hex(self.addr)
+			return name
+
+class Edge:
+	def __init__(self, src, dst, invoked = 0):
+		self._src = src
+		self._dst = dst
+		self._invoked = invoked
+
+	@property
+	def src(self):
+		return self._src
+
+	@property
+	def dst(self):
+		return self._dst
+
+	@property
+	def invoked(self):
+		return self._invoked
+
+	@invoked.setter
+	def invoked(self, invoked):
+		if self._invoked == 0:
+			self._invoked = invoked
+		else:
+			assert self._invoked == invoked
+
+	def __str__(self, dot = False):
+		if dot:
+			return '  "{0}" -> "{1}" [label=" {2}"]'.format(self._src, \
+				self._dst, self._invoked)
+		else:
+			return '{0} -> {1} [{2}]'.format(self._src, self._dst, self._invoked)
+
+class CFG:
+	def __init__(self, addr):
+		self._addr = addr
+		self._invoked = 0
+		self._name = 'unknown'
+		self._complete = False
+		self._entry = Node(NodeType.ENTRY)
+		self._exit = Node(NodeType.EXIT)
+		self._halt = Node(NodeType.HALT)
+
+		node = Node(NodeType.PHANTOM, addr)
+		self._nodes = [ self._entry, node ]
+		self._edges = [ Edge(self._entry, node) ]
+
+	@property
+	def addr(self):
+		return self._addr
+
+	@property
+	def invoked(self):
+		return self._invoked
+
+	@invoked.setter
+	def invoked(self, invoked):
+		assert invoked > 0
+		self._invoked = invoked
+
+		e = self.edges[0]
+		assert e.src.type == NodeType.ENTRY
+		e.invoked = invoked
+
+	@property
+	def name(self):
+		return self._name
+
+	@name.setter
+	def name(self, name):
+		self._name = name
+
+	@property
+	def complete(self):
+		return self._complete
+
+	@complete.setter
+	def complete(self, complete):
+		self._complete = complete
+
+	@property
+	def entry(self):
+		return self._entry
+
+	@property
+	def exit(self):
+		return self._exit
+
+	@property
+	def halt(self):
+		return self._halt
+
+	@property
+	def nodes(self):
+		return self._nodes
+
+	def node(self, addr, instantiate = False):
+		assert addr != 0
+		for node in self._nodes:
+			if node.type in (NodeType.PHANTOM, NodeType.BLOCK) and \
+					node.addr == addr:
+				return node
+
+		if instantiate:
+			node = Node(NodeType.PHANTOM, addr)
+			self._nodes.append(node)
+			return node
+		else:
+			return None
+
+	@property
+	def edges(self):
+		return self._edges
+
+	def edge(self, src, dst, instantiate = False):
+		for edge in self._edges:
+			if edge.src == src and edge.dst == dst:
+				return edge
+
+		if instantiate:
+			edge = Edge(src, dst)
+			if (dst == self.exit or dst == self.halt) and dst not in self.nodes:
+				self._nodes.append(dst)
+
+			self._edges.append(edge)
+			return edge
+		else:
+			return None
+
+	def __str__(self, dot = False):
+		if dot:
+			ss = 'digraph "{0}" {{\n' \
+					'  label = "{0} ({1})"\n' \
+					'  labelloc = "t"\n' \
+					'  node[shape=record]\n\n'.format(hex(self.addr), self.name)
+			for node in self.nodes:
+				ss += '{0}\n'.format(node.__str__(True))
+			ss += '\n'
+
+			for edge in self.edges:
+				ss += '{0}\n'.format(edge.__str__(True))			
+			ss += '}'
+			return ss
+		else:
+			ss = '[cfg {0}'.format(hex(self.addr))
+			if self.invoked > 0:
+				ss += ':{0}'.format(self.invoked)
+			ss += ' "{0}" {1}]'.format(self.name, str(self.complete).lower())
+			for node in self.nodes:
+				if node.type != NodeType.BLOCK:
+					continue
+
+				ss += '\n[node {0} {1} {2} '.format(hex(self.addr), hex(node.addr), node.size)
+
+				ss += '['
+				assert node.instrs
+				for instr in node.instrs:
+					ss += str(instr.size) + ' '
+				ss = ss[:-1]
+				ss += '] '
+
+				ss += '['
+				if node.calls:
+					for call in node.calls:
+						if call[1] > 0:
+							ss += '{0}:{1} '.format(hex(call[0].addr), call[1])
+						else:
+							ss += '{0} '.format(hex(call[0].addr))
+					ss = ss[:-1]
+				ss += '] '
+
+				ss += '['
+				if node.signals:
+					for signal in node.signals:
+						if signal[2] > 0:
+							ss += '{0}->{1}:{2} '.format(signal[0], \
+								hex(signal[1].addr), signal[2])
+						else:
+							ss += '{0}->{1} '.format(signal[0], \
+								hex(signal[1].addr))
+					ss = ss[:-1]
+				ss += '] '
+
+				ss += '{0} '.format(str(node.indirect).lower())
+				
+				ss += '['
+				assert self.edges
+				for edge in self.edges:
+					if node != edge.src:
+						continue
+
+					if edge.invoked > 0:
+						ss += '{0}:{1} '.format(str(edge.dst).lower(), edge.invoked)
+					else:
+						ss += '{0} '.format(str(edge.dst).lower())
+				ss = ss[:-1]
+				ss += ']]'
+
+			return ss
+
+class CFGStats:		
+	def __init__(self, cfg):
+		self._cfg = cfg
+
+		self._blocks = 0
+		self._phantoms = 0
+		self._exit = False
+		self._halt = False
+
+		self._edges = 0
+		self._static = { 'instrs': 0, 'calls': 0, 'signals': 0 }
+		self._dynamic = self._static.copy()
+
+		for node in cfg.nodes:
+			t = node.type
+			if t == NodeType.ENTRY:
+				continue
+			elif t == NodeType.EXIT:
+				self._exit = True
+			elif t == NodeType.HALT:
+				self._halt = True
+			elif t == NodeType.PHANTOM:
+				self._phantoms += 1
+			else:
+				assert t == NodeType.BLOCK
+				self._blocks += 1
+
+				self._static['instrs'] += len(node.instrs)
+
+				for (called_cfg, invoked) in node.calls:
+					self._static['calls'] += 1
+					self._dynamic['calls'] += invoked
+
+				for (signal_id, signal_cfg, invoked) in node.signals:
+					self._static['signals'] += 1
+					self._dynamic['signals'] += invoked
+
+		for edge in cfg.edges:
+			self._edges += 1
+
+			if edge.dst.type == NodeType.BLOCK:
+				self._dynamic['instrs'] += len(edge.dst.instrs) * edge.invoked
+
+	@property
+	def cfg(self):
+		return self._cfg
+
+	@property
+	def blocks(self):
+		return self._blocks
+	
+	@property
+	def phantoms(self):
+		return self._phantoms
+
+	@property
+	def exit(self):
+		return self._exit
+
+	@property
+	def halt(self):
+		return self._halt
+
+	@property
+	def edges(self):
+		return self._edges
+
+	@property
+	def static(self):
+		return self._static
+
+	@property
+	def dynamic(self):
+		return self._dynamic
+
+
+def ignore_cfg(cfg):
+	if not args.function:
+		return False
+
+	for f in args.function:
+		if f in cfg.name:
+			return False
+		else:
+			try:
+				if cfg.addr == int(f, 16):
+					return False
+			except:
+				pass
+
+	return True
+
+def write_cfg(cfg):
+	path = '{}/cfg-{}.dot'.format(args.cfg_dump_dir, hex(cfg.addr))
+
+	f = open(path, 'w')
+	f.write(cfg.__str__(True))
+	f.close()
+
+def write_program_stats(output):
+	functions = 0
+	complete = 0
+	incomplete = 0
+	blocks = 0
+	phantoms = 0
+	edges = 0
+	static = { 'instrs': 0, 'calls': 0, 'signals': 0 }
+	dynamic = static.copy()
+
+	for stat in stats:
+		functions += 1
+		complete += 1 if stat.cfg.complete else 0
+		incomplete += 1 if not stat.cfg.complete else 0
+		blocks += stat.blocks
+		phantoms += stat.phantoms
+		edges += stat.edges
+		static['instrs'] += stat.static['instrs']
+		static['calls'] += stat.static['calls']
+		static['signals'] += stat.static['signals']
+		dynamic['instrs'] += stat.dynamic['instrs']
+		dynamic['calls'] += stat.dynamic['calls']
+		dynamic['signals'] += stat.dynamic['signals']
+
+	if args.format == 'json':
+		output.write('{\n')
+		output.write('  functions: {},\n'.format(functions))
+		output.write('  complete: {},\n'.format(complete))
+		output.write('  incomplete: {},\n'.format(incomplete))
+		output.write('  blocks: {},\n'.format(blocks))
+		output.write('  phantoms: {},\n'.format(phantoms))
+		output.write('  edges: {},\n'.format(edges))
+		output.write('  static: {\n')
+		output.write('    instructions: {},\n'.format(static['instrs']))
+		output.write('    calls: {},\n'.format(static['calls']))
+		output.write('    signals: {}\n'.format(static['signals']))
+		output.write('  },\n')
+		output.write('  dynamic: {\n')
+		output.write('    instructions: {},\n'.format(dynamic['instrs']))
+		output.write('    calls: {},\n'.format(dynamic['calls']))
+		output.write('    signals: {}\n'.format(dynamic['signals']))
+		output.write('  }\n')
+		output.write('}\n')
+	else:
+		output.write('functions,complete,incomplete,blocks,phantoms,edges,' \
+			'static_instrs,static_calls,static_signals,dynamic_instrs,' \
+			'dynamic_calls,dynamic_signals\n')
+		output.write('{},{},{},{},{},{},{},{},{},{},{},{}\n'.format(
+			functions,complete,incomplete,blocks,phantoms,edges, \
+			static['instrs'],static['calls'],static['signals'], \
+			dynamic['instrs'],dynamic['calls'],dynamic['signals']))
+
+def write_functions_stats(output):
+	if args.format == 'json':
+		output.write('[\n')
+		for stat in stats:
+			if stats[0] != stat:
+				output.write(',\n')
+
+			output.write('  {\n')
+			output.write('    cfg: {},\n'.format(hex(stat.cfg.addr)))
+			output.write('    invoked: {},\n'.format(stat.cfg.invoked))
+			output.write('    complete: {},\n'.format(str(stat.cfg.complete).lower()))
+			output.write('    blocks: {},\n'.format(stat.blocks))
+			output.write('    phantoms: {},\n'.format(stat.phantoms))
+			output.write('    exit: {},\n'.format(str(stat.exit).lower()))
+			output.write('    halt: {},\n'.format(str(stat.halt).lower()))
+			output.write('    edges: {},\n'.format(stat.edges))
+			output.write('    static: {\n')
+			output.write('      instructions: {},\n'.format(stat.static['instrs']))
+			output.write('      calls: {},\n'.format(stat.static['calls']))
+			output.write('      signals: {}\n'.format(stat.static['signals']))
+			output.write('    },\n')
+			output.write('    dynamic: {\n')
+			output.write('      instructions: {},\n'.format(stat.dynamic['instrs']))
+			output.write('      calls: {},\n'.format(stat.dynamic['calls']))
+			output.write('      signals: {}\n'.format(stat.dynamic['signals']))
+			output.write('    },\n')
+			output.write('    name: \'{}\'\n'.format(stat.cfg.name))
+			output.write('  }')
+
+		output.write('\n]\n')
+	else:
+		output.write('cfg,invoked,complete,blocks,phantoms,exit,halt,edges,' + \
+			    		'static_instrs,static_calls,static_signals' + \
+						'dynamic_instrs,dynamic_calls,dynamic_signals,name\n')
+		for stat in stats:
+			output.write('{},{},{},{},{},{},{},{},{},{},{},{},{},{},\'{}\'\n' \
+				.format(hex(stat.cfg.addr), stat.cfg.invoked, \
+					str(stat.cfg.complete).lower(), stat.blocks, stat.phantoms, \
+					str(stat.exit).lower(), str(stat.halt).lower(), stat.edges, \
+					stat.static['instrs'], stat.static['calls'], \
+					stat.static['signals'], stat.dynamic['instrs'], \
+					stat.dynamic['calls'], stat.dynamic['signals'], stat.cfg.name))
+
+parser = argparse.ArgumentParser(description='CFGgrind info')
+parser.add_argument('input', nargs=1, help='CFGs file')
+parser.add_argument('-f', '--function', nargs='*', default=[], help='Filter by function name or address')
+parser.add_argument('-i', '--instrs-map', help='Instructions mapping file')
+parser.add_argument('-d', '--cfg-dump', action='store_true', help='CFG dump (default: false)')
+parser.add_argument('-r', '--cfg-dump-dir', default='.', help='Directory where to dump CFGs (default: .)')
+parser.add_argument('-s', '--stats', choices=['program', 'functions'], default='functions', help='Statistics for the whole program, or per function (default: functions)')
+parser.add_argument('-o', '--output', help='Output to a file, instead of standard output')
+parser.add_argument('-m', '--format', choices=['json', 'csv'], default='json', help='Output format for statistics json or csv (default: json)')
+args = parser.parse_args()
+
+instrs = {}
+cfgs = {}
+stats = []
+
+# Load the instructions map file.
+if args.instrs_map:
+	with open(args.instrs_map) as f:
+		for line in f:
+			tmp = line.strip().split(':')
+			if len(tmp) == 3:
+				instr_addr = int(tmp[0], 16)
+				instr_size = int(tmp[1])
+				instr_name = tmp[2]
+
+				instr = instrs.setdefault(instr_addr, \
+							Instr(instr_addr, instr_size, instr_name))
+
+# Read the input.
+with open(args.input[0]) as f:
+	for line in f:
+		# match cfg
+		match = re.search(r'^\s*\[cfg\s+([^\s]*)\s+"([^"]*)"\s+([^]\s]*)\s*]\s*$', line.strip())
+		if match:
+			tmp = match.group(1).split(':')
+			cfg_addr = int(tmp[0], 16)
+			invoked = int(tmp[1]) if len(tmp) > 1 else 0
+
+			cfg = cfgs.setdefault(cfg_addr, CFG(cfg_addr))
+			cfg.name = match.group(2)
+			if invoked > 0:
+				cfg.invoked = invoked
+
+			cfg.complete = match.group(3).lower() == "true"
+
+		# match node
+		match = re.search(r'^\s*\[node\s+([^\s]*)\s+([^\s]*)\s+([^\s]*)\s+\[([^]]*)\]\s+\[([^]]*)\]\s+\[([^]]*)\]\s+([^\s]*)\s+\[([^]]*)\]\s*\]\s*$', line.strip())
+		if match:
+			cfg_addr = int(match.group(1), 16)
+			cfg = cfgs.setdefault(cfg_addr, CFG(cfg_addr))
+
+			node_addr = int(match.group(2), 16)
+			node = cfg.node(node_addr, True)
+
+			tmp_instrs = []
+			last_addr = node_addr
+			for instr_size in match.group(4).split():
+				instr = instrs.setdefault(last_addr, Instr(last_addr, int(instr_size)))
+				tmp_instrs.append(instr)
+				last_addr = last_addr + int(instr_size)
+			node.instrs = tmp_instrs
+
+			node_size = int(match.group(3))
+			assert node.size == node_size
+
+			calls = []
+			for call in match.group(5).split():
+				tmp = call.split(':')
+
+				call_addr = int(tmp[0], 16)
+				invoked = int(tmp[1]) if len(tmp) > 1 else 0
+
+				called_cfg = cfgs.setdefault(call_addr, CFG(call_addr))
+				calls.append((called_cfg, invoked))
+			node.calls = calls
+
+			signals = []
+			for signal in match.group(6).split():
+				tmp = signal.split('->')
+				signal_id = int(tmp[0])
+
+				tmp2 = tmp[1].split(':')
+				signal_addr = int(tmp2[0], 16)
+				invoked = int(tmp2[1]) if len(tmp2) > 1 else 0
+
+				signal_cfg = cfgs.setdefault(signal_addr, CFG(signal_addr))
+				signals.append((signal_id, signal_cfg, invoked))
+			node.signals = signals
+
+			cfg.indirect = match.group(7).lower() == "true"
+
+			for succ in match.group(8).split():
+				tmp = succ.split(':')
+
+				dst = {
+					'entry': cfg.entry,
+					'exit': cfg.exit,
+					'halt': cfg.halt,
+				}.get(tmp[0].lower())
+				if not dst:
+					dst = cfg.node(int(tmp[0], 16), True)
+
+				edge = cfg.edge(node, dst, True)
+				edge.invoked = int(tmp[1]) if len(tmp) > 1 else 0
+
+# Build stats
+for cfg_addr in cfgs:
+	cfg = cfgs[cfg_addr]
+	if ignore_cfg(cfg):
+		continue
+
+	if args.cfg_dump:
+		write_cfg(cfg)
+
+	stats.append(CFGStats(cfg))
+
+out = open(args.output, 'w') if args.output else sys.stdout
+
+if args.stats == 'program':
+	write_program_stats(out)
+else:
+	write_functions_stats(out)
+
+if args.output:
+	out.close()
