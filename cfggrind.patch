@@ -1,5 +1,5 @@
 diff --git a/Makefile.am b/Makefile.am
-index f8c3fc5..dbc43bf 100644
+index 7749442..fa9962a 100644
 --- a/Makefile.am
 +++ b/Makefile.am
 @@ -7,6 +7,7 @@ TOOLS = \
@@ -11,10 +11,10 @@ index f8c3fc5..dbc43bf 100644
  		drd \
  		massif \
 diff --git a/configure.ac b/configure.ac
-index a3584c9..37e22f0 100755
+index b851798..a7f1fef 100755
 --- a/configure.ac
 +++ b/configure.ac
-@@ -4949,6 +4949,8 @@ AC_CONFIG_FILES([
+@@ -5164,6 +5164,8 @@ AC_CONFIG_FILES([
     callgrind/callgrind_annotate
     callgrind/callgrind_control
     callgrind/tests/Makefile
