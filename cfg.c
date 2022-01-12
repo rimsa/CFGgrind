@@ -90,7 +90,7 @@ struct {
 		Bool bool;
 	} data;
 
-	HChar text[1024];
+	HChar text[8192];
 } token;
 
 static __inline__
