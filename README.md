@@ -129,7 +129,7 @@ for specific functions, combine with the _-f_ option.
                 calls: 16,
                 signals: 0
             },
-            name: 'test::main(18)'
+            name: "test::main(18)"
         },
         {
             cfg: 0x400607,
@@ -150,7 +150,7 @@ for specific functions, combine with the _-f_ option.
                 calls: 0,
                 signals: 0
             },
-            name: 'test::bubble(4)'
+            name: "test::bubble(4)"
         }
     ]
 

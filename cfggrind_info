@@ -541,7 +541,7 @@ def write_functions_stats(output):
 			output.write('      calls: {},\n'.format(stat.dynamic['calls']))
 			output.write('      signals: {}\n'.format(stat.dynamic['signals']))
 			output.write('    },\n')
-			output.write('    name: \'{}\'\n'.format(stat.cfg.name))
+			output.write('    name: "{}"\n'.format(stat.cfg.name))
 			output.write('  }')
 
 		output.write('\n]\n')
