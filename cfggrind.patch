@@ -1,8 +1,7 @@
-diff --git a/Makefile.am b/Makefile.am
-index 7749442..fa9962a 100644
---- a/Makefile.am
-+++ b/Makefile.am
-@@ -7,6 +7,7 @@ TOOLS = \
+diff -urN a/Makefile.am b/Makefile.am
+--- a/Makefile.am	2022-04-11 11:27:12.000000000 -0300
++++ b/Makefile.am	2022-05-17 10:44:29.000000000 -0300
+@@ -7,6 +7,7 @@
  		memcheck \
  		cachegrind \
  		callgrind \
@@ -10,11 +9,10 @@ index 7749442..fa9962a 100644
  		helgrind \
  		drd \
  		massif \
-diff --git a/configure.ac b/configure.ac
-index b851798..a7f1fef 100755
---- a/configure.ac
-+++ b/configure.ac
-@@ -5164,6 +5164,8 @@ AC_CONFIG_FILES([
+diff -urN a/configure.ac b/configure.ac
+--- a/configure.ac	2022-04-11 11:27:12.000000000 -0300
++++ b/configure.ac	2022-05-17 10:44:29.000000000 -0300
+@@ -5307,6 +5307,8 @@
     callgrind/callgrind_annotate
     callgrind/callgrind_control
     callgrind/tests/Makefile
