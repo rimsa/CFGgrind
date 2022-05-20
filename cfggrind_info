@@ -577,14 +577,16 @@ stats = []
 if args.instrs_map:
 	with open(args.instrs_map) as f:
 		for line in f:
-			tmp = line.strip().split(':')
-			if len(tmp) == 3:
-				instr_addr = int(tmp[0], 16)
-				instr_size = int(tmp[1])
-				instr_name = tmp[2]
+			# match instruction
+			match = re.search(r'^([^:]*):([^:]*):(.*)$', line.strip())
+			if match:
+				instr_addr = int(match.group(1), 16)
+				instr_size = int(match.group(2))
+				instr_name = match.group(3)
 
 				instr = instrs.setdefault(instr_addr, \
 							Instr(instr_addr, instr_size, instr_name))
+				assert instr.size == instr_size
 
 # Read the input.
 with open(args.input[0]) as f:
@@ -616,6 +618,7 @@ with open(args.input[0]) as f:
 			last_addr = node_addr
 			for instr_size in match.group(4).split():
 				instr = instrs.setdefault(last_addr, Instr(last_addr, int(instr_size)))
+				assert instr.size == int(instr_size)
 				tmp_instrs.append(instr)
 				last_addr = last_addr + int(instr_size)
 			node.instrs = tmp_instrs
