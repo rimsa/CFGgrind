@@ -304,7 +304,7 @@ class CFG:
 			ss += '\n'
 
 			for edge in self.edges:
-				ss += '{0}\n'.format(edge.__str__(True))			
+				ss += '{0}\n'.format(edge.__str__(True))
 			ss += '}'
 			return ss
 		else:
@@ -348,7 +348,7 @@ class CFG:
 				ss += '] '
 
 				ss += '{0} '.format(str(node.indirect).lower())
-				
+
 				ss += '['
 				assert self.edges
 				for edge in self.edges:
@@ -364,7 +364,7 @@ class CFG:
 
 			return ss
 
-class CFGStats:		
+class CFGStats:
 	def __init__(self, cfg):
 		self._cfg = cfg
 
@@ -414,7 +414,7 @@ class CFGStats:
 	@property
 	def blocks(self):
 		return self._blocks
-	
+
 	@property
 	def phantoms(self):
 		return self._phantoms
@@ -439,12 +439,11 @@ class CFGStats:
 	def dynamic(self):
 		return self._dynamic
 
-
-def ignore_cfg(cfg):
-	if not args.function:
+def ignore_cfg(cfg, selected_functions):
+	if not selected_functions:
 		return False
 
-	for f in args.function:
+	for f in selected_functions:
 		if f in cfg.name:
 			return False
 		else:
@@ -456,14 +455,14 @@ def ignore_cfg(cfg):
 
 	return True
 
-def write_cfg(cfg):
-	path = '{}/cfg-{}.dot'.format(args.cfg_dump_dir, hex(cfg.addr))
+def write_cfg(cfg, dump_dir):
+	path = '{}/cfg-{}.dot'.format(dump_dir, hex(cfg.addr))
 
 	f = open(path, 'w')
 	f.write(cfg.__str__(True))
 	f.close()
 
-def write_program_stats(output):
+def write_program_stats(output, stats, format):
 	functions = 0
 	complete = 0
 	incomplete = 0
@@ -487,7 +486,7 @@ def write_program_stats(output):
 		dynamic['calls'] += stat.dynamic['calls']
 		dynamic['signals'] += stat.dynamic['signals']
 
-	if args.format == 'json':
+	if format == 'json':
 		output.write('{\n')
 		output.write('  functions: {},\n'.format(functions))
 		output.write('  complete: {},\n'.format(complete))
@@ -515,8 +514,8 @@ def write_program_stats(output):
 			static['instrs'],static['calls'],static['signals'], \
 			dynamic['instrs'],dynamic['calls'],dynamic['signals']))
 
-def write_functions_stats(output):
-	if args.format == 'json':
+def write_functions_stats(output, stats, format):
+	if format == 'json':
 		output.write('[\n')
 		for stat in stats:
 			if stats[0] != stat:
@@ -558,24 +557,11 @@ def write_functions_stats(output):
 					stat.static['signals'], stat.dynamic['instrs'], \
 					stat.dynamic['calls'], stat.dynamic['signals'], stat.cfg.name))
 
-parser = argparse.ArgumentParser(description='CFGgrind info')
-parser.add_argument('input', nargs=1, help='CFGs file')
-parser.add_argument('-f', '--function', nargs='*', default=[], help='Filter by function name or address')
-parser.add_argument('-i', '--instrs-map', help='Instructions mapping file')
-parser.add_argument('-d', '--cfg-dump', action='store_true', help='CFG dump (default: false)')
-parser.add_argument('-r', '--cfg-dump-dir', default='.', help='Directory where to dump CFGs (default: .)')
-parser.add_argument('-s', '--stats', choices=['program', 'functions'], default='functions', help='Statistics for the whole program, or per function (default: functions)')
-parser.add_argument('-o', '--output', help='Output to a file, instead of standard output')
-parser.add_argument('-m', '--format', choices=['json', 'csv'], default='json', help='Output format for statistics json or csv (default: json)')
-args = parser.parse_args()
+def load_instructions(filename):
+	instrs = {}
 
-instrs = {}
-cfgs = {}
-stats = []
-
-# Load the instructions map file.
-if args.instrs_map:
-	with open(args.instrs_map) as f:
+	# Load the instructions map file.
+	with open(filename) as f:
 		for line in f:
 			# match instruction
 			match = re.search(r'^([^:]*):([^:]*):(.*)$', line.strip())
@@ -588,101 +574,133 @@ if args.instrs_map:
 							Instr(instr_addr, instr_size, instr_name))
 				assert instr.size == instr_size
 
-# Read the input.
-with open(args.input[0]) as f:
-	for line in f:
-		# match cfg
-		match = re.search(r'^\s*\[cfg\s+([^\s]*)\s+"([^"]*)"\s+([^]\s]*)\s*]\s*$', line.strip())
-		if match:
-			tmp = match.group(1).split(':')
-			cfg_addr = int(tmp[0], 16)
-			invoked = int(tmp[1]) if len(tmp) > 1 else 0
+	return instrs
 
-			cfg = cfgs.setdefault(cfg_addr, CFG(cfg_addr))
-			cfg.name = match.group(2)
-			if invoked > 0:
-				cfg.invoked = invoked
+def load_cfgs(filename, instrs):
+	cfgs = {}
 
-			cfg.complete = match.group(3).lower() == "true"
-
-		# match node
-		match = re.search(r'^\s*\[node\s+([^\s]*)\s+([^\s]*)\s+([^\s]*)\s+\[([^]]*)\]\s+\[([^]]*)\]\s+\[([^]]*)\]\s+([^\s]*)\s+\[([^]]*)\]\s*\]\s*$', line.strip())
-		if match:
-			cfg_addr = int(match.group(1), 16)
-			cfg = cfgs.setdefault(cfg_addr, CFG(cfg_addr))
-
-			node_addr = int(match.group(2), 16)
-			node = cfg.node(node_addr, True)
-
-			tmp_instrs = []
-			last_addr = node_addr
-			for instr_size in match.group(4).split():
-				instr = instrs.setdefault(last_addr, Instr(last_addr, int(instr_size)))
-				assert instr.size == int(instr_size)
-				tmp_instrs.append(instr)
-				last_addr = last_addr + int(instr_size)
-			node.instrs = tmp_instrs
-
-			node_size = int(match.group(3))
-			assert node.size == node_size
-
-			calls = []
-			for call in match.group(5).split():
-				tmp = call.split(':')
-
-				call_addr = int(tmp[0], 16)
+	# Read the input.
+	with open(filename) as f:
+		for line in f:
+			# match cfg
+			match = re.search(r'^\s*\[cfg\s+([^\s]*)\s+"([^"]*)"\s+([^]\s]*)\s*]\s*$', line.strip())
+			if match:
+				tmp = match.group(1).split(':')
+				cfg_addr = int(tmp[0], 16)
 				invoked = int(tmp[1]) if len(tmp) > 1 else 0
 
-				called_cfg = cfgs.setdefault(call_addr, CFG(call_addr))
-				calls.append((called_cfg, invoked))
-			node.calls = calls
+				cfg = cfgs.setdefault(cfg_addr, CFG(cfg_addr))
+				cfg.name = match.group(2)
+				if invoked > 0:
+					cfg.invoked = invoked
 
-			signals = []
-			for signal in match.group(6).split():
-				tmp = signal.split('->')
-				signal_id = int(tmp[0])
+				cfg.complete = match.group(3).lower() == "true"
 
-				tmp2 = tmp[1].split(':')
-				signal_addr = int(tmp2[0], 16)
-				invoked = int(tmp2[1]) if len(tmp2) > 1 else 0
+			# match node
+			match = re.search(r'^\s*\[node\s+([^\s]*)\s+([^\s]*)\s+([^\s]*)\s+\[([^]]*)\]\s+\[([^]]*)\]\s+\[([^]]*)\]\s+([^\s]*)\s+\[([^]]*)\]\s*\]\s*$', line.strip())
+			if match:
+				cfg_addr = int(match.group(1), 16)
+				cfg = cfgs.setdefault(cfg_addr, CFG(cfg_addr))
 
-				signal_cfg = cfgs.setdefault(signal_addr, CFG(signal_addr))
-				signals.append((signal_id, signal_cfg, invoked))
-			node.signals = signals
+				node_addr = int(match.group(2), 16)
+				node = cfg.node(node_addr, True)
 
-			cfg.indirect = match.group(7).lower() == "true"
+				tmp_instrs = []
+				last_addr = node_addr
+				for instr_size in match.group(4).split():
+					instr = instrs.setdefault(last_addr, Instr(last_addr, int(instr_size)))
+					assert instr.size == int(instr_size)
+					tmp_instrs.append(instr)
+					last_addr = last_addr + int(instr_size)
+				node.instrs = tmp_instrs
 
-			for succ in match.group(8).split():
-				tmp = succ.split(':')
+				node_size = int(match.group(3))
+				assert node.size == node_size
 
-				dst = {
-					'entry': cfg.entry,
-					'exit': cfg.exit,
-					'halt': cfg.halt,
-				}.get(tmp[0].lower())
-				if not dst:
-					dst = cfg.node(int(tmp[0], 16), True)
+				calls = []
+				for call in match.group(5).split():
+					tmp = call.split(':')
 
-				edge = cfg.edge(node, dst, True)
-				edge.invoked = int(tmp[1]) if len(tmp) > 1 else 0
+					call_addr = int(tmp[0], 16)
+					invoked = int(tmp[1]) if len(tmp) > 1 else 0
 
-# Build stats
-for cfg_addr in cfgs:
-	cfg = cfgs[cfg_addr]
-	if ignore_cfg(cfg):
-		continue
+					called_cfg = cfgs.setdefault(call_addr, CFG(call_addr))
+					calls.append((called_cfg, invoked))
+				node.calls = calls
 
+				signals = []
+				for signal in match.group(6).split():
+					tmp = signal.split('->')
+					signal_id = int(tmp[0])
+
+					tmp2 = tmp[1].split(':')
+					signal_addr = int(tmp2[0], 16)
+					invoked = int(tmp2[1]) if len(tmp2) > 1 else 0
+
+					signal_cfg = cfgs.setdefault(signal_addr, CFG(signal_addr))
+					signals.append((signal_id, signal_cfg, invoked))
+				node.signals = signals
+
+				cfg.indirect = match.group(7).lower() == "true"
+
+				for succ in match.group(8).split():
+					tmp = succ.split(':')
+
+					dst = {
+						'entry': cfg.entry,
+						'exit': cfg.exit,
+						'halt': cfg.halt,
+					}.get(tmp[0].lower())
+					if not dst:
+						dst = cfg.node(int(tmp[0], 16), True)
+
+					edge = cfg.edge(node, dst, True)
+					edge.invoked = int(tmp[1]) if len(tmp) > 1 else 0
+
+	return cfgs
+
+def build_stats(cfgs, selected_functions):
+	stats = []
+
+	# Build statistics.
+	for cfg_addr in cfgs:
+		cfg = cfgs[cfg_addr]
+		if ignore_cfg(cfg, selected_functions):
+			continue
+
+		stats.append(CFGStats(cfg))
+
+	return stats
+
+def main():
+	parser = argparse.ArgumentParser(description='CFGgrind info')
+	parser.add_argument('input', nargs=1, help='CFGs file')
+	parser.add_argument('-f', '--function', nargs='*', default=[], help='Filter by function name or address')
+	parser.add_argument('-i', '--instrs-map', help='Instructions mapping file')
+	parser.add_argument('-d', '--cfg-dump', action='store_true', help='CFG dump (default: false)')
+	parser.add_argument('-r', '--cfg-dump-dir', default='.', help='Directory where to dump CFGs (default: .)')
+	parser.add_argument('-s', '--stats', choices=['program', 'functions'], default='functions', help='Statistics for the whole program, or per function (default: functions)')
+	parser.add_argument('-o', '--output', help='Output to a file, instead of standard output')
+	parser.add_argument('-m', '--format', choices=['json', 'csv'], default='json', help='Output format for statistics json or csv (default: json)')
+	args = parser.parse_args()
+
+	instrs = load_instructions(args.instrs_map) if args.instrs_map else {}
+	cfgs = load_cfgs(args.input[0], instrs)
+	stats = build_stats(cfgs, args.function)
+
+	# Dump control flow graphs.
 	if args.cfg_dump:
-		write_cfg(cfg)
+		for stat in stats:
+			write_cfg(stat.cfg, args.cfg_dump_dir)
 
-	stats.append(CFGStats(cfg))
+	# Write program stats.
+	out = open(args.output, 'w') if args.output else sys.stdout
+	if args.stats == 'program':
+		write_program_stats(out, stats, args.format)
+	else:
+		write_functions_stats(out, stats, args.format)
+	if args.output:
+		out.close()
 
-out = open(args.output, 'w') if args.output else sys.stdout
-
-if args.stats == 'program':
-	write_program_stats(out)
-else:
-	write_functions_stats(out)
-
-if args.output:
-	out.close()
+if __name__ == "__main__":
+    main()
