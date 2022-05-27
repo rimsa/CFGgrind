@@ -429,7 +429,6 @@ struct _CfgNode {
 	} data;
 
 	struct {
-		Bool has_fallthrough;
 		SmartList* successors;   /* SmartList<CfgEdge*> */
 		SmartList* predecessors; /* SmartList<CfgEdge*> */
 	} info;

@@ -989,9 +989,6 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	last->next = 0;
 	pred = new_cfgnode_block(cfg, first);
 
-	// The predecessor has naturally a fallthrough to the node.
-	pred->info.has_fallthrough = True;
-
 #if ENABLE_PROFILING
 	count = 0;
 #endif
@@ -1331,10 +1328,15 @@ Bool cfgnode_has_successors(CfgNode* node) {
 	return CGD_(smart_list_count)(node->info.successors) > 0;
 }
 
-static __inline__
+static
 Bool cfgnode_has_fallthrough(CfgNode* node) {
+	CfgInstrRef* tail;
+
 	CGD_ASSERT(node != 0 && node->type == CFG_BLOCK);
-	return node->info.has_fallthrough;
+
+	tail = node->data.block->instrs.tail;
+	return find_successor_with_addr(node,
+		(ref_instr_addr(tail) + ref_instr_size(tail))) != 0;
 }
 
 static __inline__
@@ -1796,10 +1798,6 @@ void cfgnode_merge(CFG* cfg, CfgEdge* edge) {
 	block->indirect = edge->dst->data.block->indirect;
 	edge->dst->data.block->indirect = False;
 
-	// Move the fallthrough flag.
-	edge->src->info.has_fallthrough = edge->dst->info.has_fallthrough;
-	edge->dst->info.has_fallthrough = False;
-
 	// Move the successors of the node to its predecessor and fix edges.
 	CGD_(smart_list_clear)(edge->src->info.successors, 0);
 	size = CGD_(smart_list_count)(edge->dst->info.successors);
@@ -2007,8 +2005,6 @@ void CGD_(check_cfg)(CFG* cfg) {
 					}
 					CGD_ASSERT(count == block->instrs.count);
 					CGD_ASSERT(total == block->size);
-
-					ref = block->instrs.tail;
 
 					if (block->calls) {
 						size2 = CGD_(smart_list_count)(block->calls);

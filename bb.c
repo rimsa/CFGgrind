@@ -631,8 +631,6 @@ void CGD_(setup_bb)(BB* bb) {
 		CGD_(push_call_stack)(last_bb, passed, bb, sp);
 	}
 
-	CGD_(current_state).working->info.has_fallthrough |= (jmpkind == bjk_None);
-
 #if CFG_NODE_CACHE_SIZE > 0
 	blockCache = CGD_(current_state).working->cache.block ?
 			&(CGD_(current_state).working->cache.block[CFG_NODE_CACHE_INDEX(bb->groups[0].group_addr)]) : 0;
