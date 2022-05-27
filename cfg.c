@@ -1855,21 +1855,41 @@ void CGD_(fix_cfg)(CFG* cfg) {
 		CfgNode* node = (CfgNode*) CGD_(smart_list_at)(cfg->nodes, i);
 		CGD_ASSERT(node != 0);
 
-		// Check if it can be merged.
-		if (node->type == CFG_BLOCK &&
-				CGD_(smart_list_count)(node->info.predecessors) == 1) {
-			CfgEdge* edge = (CfgEdge*) CGD_(smart_list_head)(node->info.predecessors);
-			CGD_ASSERT(edge != 0);
+		if (node->type == CFG_BLOCK) {
+			CfgEdge* edge;
 
-			if (edge->src->type == CFG_BLOCK &&
-					CGD_(smart_list_count)(edge->src->info.successors) == 1 &&
-					cfgnode_has_fallthrough(edge->src) &&
-					!CGD_(cfgnode_is_indirect)(edge->src) &&
-					!cfgnode_has_calls(edge->src) && !cfgnode_has_sighandlers(edge->src)) {
-				cfgnode_merge(cfg, edge);
+			// When translating to VEX IR, valgrind may create a loop
+			// for an instruction when considered its sematics.
+			// However, in practice, such back edge should not exist.
+			// Thus, let's try to remove it if it is such case.
+			if (node->data.block->instrs.count == 1 &&
+					(edge = find_edge(node, node)) != 0) {
+#if ENABLE_PROFILING
+				// Dismiss count for this edge.
+				edge->count = 0;
+#endif
+				remove_edge(cfg, edge->src, edge->dst);
+			}
 
-				--size;
-				continue;
+			// Sometimes, a block can be created that has only a single successor and
+			// a single predecessor.
+			// This occurs because valgrind may split a superblock when it has
+			// too many instructions, or because of the situation described above.
+			// Regardless of the case, let's try to merge them.
+			if (CGD_(smart_list_count)(node->info.predecessors) == 1) {
+				edge = (CfgEdge*) CGD_(smart_list_head)(node->info.predecessors);
+				CGD_ASSERT(edge != 0);
+
+				if (edge->src->type == CFG_BLOCK &&
+						CGD_(smart_list_count)(edge->src->info.successors) == 1 &&
+						cfgnode_has_fallthrough(edge->src) &&
+						!CGD_(cfgnode_is_indirect)(edge->src) &&
+						!cfgnode_has_calls(edge->src) && !cfgnode_has_sighandlers(edge->src)) {
+					cfgnode_merge(cfg, edge);
+
+					--size;
+					continue;
+				}
 			}
 		}
 
