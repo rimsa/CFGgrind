@@ -100,6 +100,18 @@ Addr ref_instr_addr(CfgInstrRef* ref) {
 }
 
 static __inline__
+Int ref_instr_size(CfgInstrRef* ref) {
+	CGD_ASSERT(ref != 0 && ref->instr != 0);
+	return ref->instr->size;
+}
+
+static __inline__
+const HChar* ref_instr_name(CfgInstrRef* ref) {
+	CGD_ASSERT(ref != 0 && ref->instr != 0);
+	return (ref->instr->name != 0 ? ref->instr->name : "???");
+}
+
+static __inline__
 CfgInstrRef* new_instr_ref(UniqueInstr* instr) {
 	CfgInstrRef* ref;
 
@@ -489,8 +501,8 @@ CfgBlock* new_block(CfgInstrRef* ref) {
 	block = (CfgBlock*) CGD_MALLOC("cgd.cfg.nb.1", sizeof(CfgBlock));
 	VG_(memset)(block, 0,  sizeof(CfgBlock));
 
-	block->addr = ref->instr->addr;
-	block->size = ref->instr->size;
+	block->addr = ref_instr_addr(ref);
+	block->size = ref_instr_size(ref);
 
 	// Make this instruction the first and last in the block.
 	block->instrs.leader = ref;
@@ -508,7 +520,7 @@ CfgBlock* new_block(CfgInstrRef* ref) {
 
 		// Account for this new instruction in the block.
 		block->instrs.count++;
-		block->size += block->instrs.tail->instr->size;
+		block->size += ref_instr_size(block->instrs.tail);
 
 		// Make the next one orphan too.
 		block->instrs.tail->node = 0;
@@ -575,7 +587,7 @@ void cfgnode_put_block(CFG* cfg, CfgNode* node, CfgBlock* block) {
 	// Get the first instruction in the block.
 	ref = block->instrs.leader;
 	CGD_ASSERT(ref != 0);
-	CGD_ASSERT(node->data.block->addr == ref->instr->addr);
+	CGD_ASSERT(node->data.block->addr == ref_instr_addr(ref));
 
 	// Fix the node in all instructions refs and add them to the cache.
 	while (ref) {
@@ -632,7 +644,7 @@ void add_ref2node(CFG* cfg, CfgNode* node, CfgInstrRef* ref) {
 	last = &(node->data.block->instrs.tail);
 	CGD_ASSERT(*last != 0 && (*last)->next == 0);
 	CGD_ASSERT((*last)->node == node);
-	CGD_ASSERT(((*last)->instr->addr + (*last)->instr->size) == ref->instr->addr);
+	CGD_ASSERT((ref_instr_addr(*last) + ref_instr_size(*last)) == ref_instr_addr(ref));
 
 	// Add the last reference.
 	(*last)->next = ref;
@@ -642,7 +654,7 @@ void add_ref2node(CFG* cfg, CfgNode* node, CfgInstrRef* ref) {
 
 	// Account for the instruction and its size in the block.
 	node->data.block->instrs.count++;
-	node->data.block->size += ref->instr->size;
+	node->data.block->size += ref_instr_size(ref);
 
 	// Add the reference to the CFG cache and ensure it should not be another ref
 	// with the same adddress.
@@ -960,7 +972,7 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	while (last->next != ref) {
 		// Account for the removal of the current instruction
 		// (last at this iteration).
-		node->data.block->size -= last->instr->size;
+		node->data.block->size -= ref_instr_size(last);
 		node->data.block->instrs.count--;
 
 		last = last->next;
@@ -968,8 +980,8 @@ CfgNode* cfgnode_split(CFG* cfg, CfgInstrRef* ref) {
 	}
 
 	// Update the node with the new leader.
-	node->data.block->addr = ref->instr->addr;
-	node->data.block->size -= last->instr->size;
+	node->data.block->addr = ref_instr_addr(ref);
+	node->data.block->size -= ref_instr_size(last);
 	node->data.block->instrs.leader = ref;
 	node->data.block->instrs.count--;
 
@@ -1220,7 +1232,7 @@ Addr CGD_(cfgnode_addr)(CfgNode* node) {
 		case CFG_BLOCK:
 			return node->data.block->addr;
 		case CFG_PHANTOM:
-			return node->data.phantom->instr->addr;
+			return ref_instr_addr(node->data.phantom);
 		default:
 			tl_assert(0);
 			return 0;
@@ -1353,7 +1365,7 @@ CfgEdge* get_succ_edge(CFG* cfg, CfgNode* from, Addr addr) {
 		}
 
 		// Check if the successors head instruction matches the next address.
-		if (ref != 0 && ref->instr->addr == addr)
+		if (ref != 0 && ref_instr_addr(ref) == addr)
 			return edge;
 	}
 
@@ -1369,10 +1381,10 @@ void phantom2block(CFG* cfg, CfgNode* node, Int new_size) {
 
 	ref = node->data.phantom;
 
-	if (ref->instr->size == 0)
+	if (ref_instr_size(ref) == 0)
 		ref->instr->size = new_size;
 	else
-		CGD_ASSERT(ref->instr->size == new_size);
+		CGD_ASSERT(ref_instr_size(ref) == new_size);
 
 	node->type = CFG_BLOCK;
 	node->data.block = new_block(ref);
@@ -1489,8 +1501,8 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 				// Append the instruction if possible.
 				if (bb_idx > group.bb_info.first_instr && working->type == CFG_BLOCK &&
 					!cfgnode_has_successors(working) && !cfgnode_has_calls(working)) {
-					CGD_ASSERT((working->data.block->instrs.tail->instr->addr +
-							working->data.block->instrs.tail->instr->size) == addr);
+					CGD_ASSERT((ref_instr_addr(working->data.block->instrs.tail) +
+						ref_instr_size(working->data.block->instrs.tail)) == addr);
 					add_ref2node(cfg, working, next);
 				// Create a new block, connect the working to it and
 				// make it the new working node.
@@ -1523,8 +1535,8 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 				addr = base_addr + bb->instr[bb_idx].instr_offset;
 				size = bb->instr[bb_idx].instr_size;
 
-				CGD_ASSERT(curr->instr->addr == addr);
-				CGD_ASSERT(curr->instr->size == size);
+				CGD_ASSERT(ref_instr_addr(curr) == addr);
+				CGD_ASSERT(ref_instr_size(curr) == size);
 
 				accumulated_size += size;
 				bb_idx++;
@@ -1739,13 +1751,13 @@ void cfgnode_merge(CFG* cfg, CfgEdge* edge) {
 	CGD_ASSERT(block != 0);
 
 	ref = edge->dst->data.block->instrs.leader;
-	CGD_ASSERT((block->instrs.tail->instr->addr +
-		block->instrs.tail->instr->size) == ref->instr->addr);
+	CGD_ASSERT((ref_instr_addr(block->instrs.tail) +
+		ref_instr_size(block->instrs.tail)) == ref_instr_addr(ref));
 	block->instrs.tail->next = ref;
 
 	// Fix the reference nodes and update block count.
 	while (ref) {
-		block->size += ref->instr->size;
+		block->size += ref_instr_size(ref);
 		ref->node = edge->src;
 		ref = ref->next;
 	}
@@ -1925,7 +1937,7 @@ void CGD_(check_cfg)(CFG* cfg) {
 					// The first instruction address must match the cfg address.
 					ref = edge->dst->data.block->instrs.leader;
 					CGD_ASSERT(ref != 0);
-					CGD_ASSERT(cfg->addr == ref->instr->addr);
+					CGD_ASSERT(cfg->addr == ref_instr_addr(ref));
 				}
 
 				break;
@@ -1964,13 +1976,14 @@ void CGD_(check_cfg)(CFG* cfg) {
 					ref = block->instrs.leader;
 					while (ref) {
 						if (ref->next) {
-							CGD_ASSERT((ref->instr->addr + ref->instr->size) == ref->next->instr->addr);
+							CGD_ASSERT((ref_instr_addr(ref) +
+								ref_instr_size(ref)) == ref_instr_addr(ref->next));
 						} else {
 							CGD_ASSERT(block->instrs.tail == ref);
 						}
 
 						count++;
-						total += ref->instr->size;
+						total += ref_instr_size(ref);
 
 						ref = ref->next;
 					}
@@ -2094,13 +2107,9 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 
 				while (ref) {
 					VG_(fprintf)(out, "     &nbsp;&nbsp;0x%lx \\<+%d\\>: ",
-							ref->instr->addr, ref->instr->size);
+							ref_instr_addr(ref), ref_instr_size(ref));
 
-					if (ref->instr->name)
-						fprintf_escape(out, ref->instr->name);
-					else
-						VG_(fprintf)(out, "???");
-
+					fprintf_escape(out, ref_instr_name(ref));
 					VG_(fprintf)(out, "\\l\n");
 
 					ref = ref->next;
@@ -2163,8 +2172,7 @@ void fprint_cfg(VgFile* out, CFG* cfg, Bool detailed) {
 			VG_(fprintf)(out, "  }\"]\n");
 		} else if (node->type == CFG_PHANTOM) {
 			VG_(fprintf)(out, "  \"0x%lx\" [label=\"{\n", CGD_(cfgnode_addr)(node));
-			VG_(fprintf)(out, "     0x%lx\\l\n",
-					node->data.phantom->instr->addr);
+			VG_(fprintf)(out, "     0x%lx\\l\n", ref_instr_addr(node->data.phantom));
 			VG_(fprintf)(out, "  }\", style=dashed]\n");
 		} else {
 			tl_assert(0);
@@ -2255,7 +2263,7 @@ void write_cfg(CFG* cfg) {
 
 		VG_(fprintf)(fp, "[");
 		while (ref) {
-			VG_(fprintf)(fp, "%d", ref->instr->size);
+			VG_(fprintf)(fp, "%d", ref_instr_size(ref));
 
 			if (ref->next)
 				VG_(fprintf)(fp, " ");
