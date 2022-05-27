@@ -426,17 +426,6 @@ void CGD_(setup_bb)(BB* bb) {
 		// The first group was already processed in the end of the previous setup_bbcc.
 		group = 0;
 		for (p = 0; p <= passed; p++) {
-#if CFG_NODE_CACHE_SIZE > 0
-			phantomCache = CGD_(current_state).working->cache.phantom ?
-					&(CGD_(current_state).working->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
-			if (!phantomCache ||
-					phantomCache->addr != last_bb->jmp[p].dst ||
-					phantomCache->indirect != last_bb->jmp[p].indirect)
-#endif
-				CGD_(cfgnode_set_phantom)(CGD_(current_state).cfg,
-						CGD_(current_state).working, last_bb->jmp[p].dst,
-						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
-
 			// Only process a new block if it is different from the previous one.
 			if (last_bb->jmp[p].group != group) {
 				// The next group must be immediately after the previous.
@@ -466,6 +455,17 @@ void CGD_(setup_bb)(BB* bb) {
 				}
 #endif
 			}
+
+#if CFG_NODE_CACHE_SIZE > 0
+			phantomCache = CGD_(current_state).working->cache.phantom ?
+					&(CGD_(current_state).working->cache.phantom[CFG_NODE_CACHE_INDEX(last_bb->jmp[p].dst)]) : 0;
+			if (!phantomCache ||
+					phantomCache->addr != last_bb->jmp[p].dst ||
+					phantomCache->indirect != last_bb->jmp[p].indirect)
+#endif
+				CGD_(cfgnode_set_phantom)(CGD_(current_state).cfg,
+						CGD_(current_state).working, last_bb->jmp[p].dst,
+						last_bb->jmp[p].jmpkind, last_bb->jmp[p].indirect);
 		}
 
 		// If there are still jumps in the same group, this means
