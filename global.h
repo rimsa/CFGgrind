@@ -7,9 +7,9 @@
    This file is part of CFGgrind, a dynamic control flow graph (CFG)
    reconstruction tool.
 
-   Copyright (C) 2019, Andrei Rimsa (andrei@cefetmg.br)
+   Copyright (C) 2022, Andrei Rimsa (andrei@cefetmg.br)
 
-   This tool is derived from and contains lot of code from Callgrind
+   This tool is derived and contains lot of code from Callgrind
    Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
