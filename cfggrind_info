@@ -92,6 +92,14 @@ class Node:
 		self._indirect = False
 
 	@property
+	def head(self):
+		return self._instrs[0] if self.type == NodeType.BLOCK and self._instrs else None
+
+	@property
+	def tail(self):
+		return self._instrs[-1] if self.type == NodeType.BLOCK and self._instrs else None
+
+	@property
 	def calls(self):
 		return self._calls
 
@@ -258,7 +266,7 @@ class CFG:
 
 	@property
 	def nodes(self):
-		return self._nodes
+		return self._nodes.copy()
 
 	def node(self, addr, instantiate = False):
 		assert addr != 0
@@ -276,7 +284,7 @@ class CFG:
 
 	@property
 	def edges(self):
-		return self._edges
+		return self._edges.copy()
 
 	def edge(self, src, dst, instantiate = False):
 		for edge in self._edges:
@@ -292,6 +300,12 @@ class CFG:
 			return edge
 		else:
 			return None
+
+	def succs(self, node):
+		return [ edge.dst for edge in self._edges if edge.src == node ]
+
+	def preds(self, node):
+		return [ edge.src for edge in self._edges if edge.dst == node ]
 
 	def __str__(self, dot = False):
 		if dot:
