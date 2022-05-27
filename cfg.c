@@ -1332,9 +1332,23 @@ Bool cfgnode_has_successors(CfgNode* node) {
 }
 
 static __inline__
+Bool cfgnode_has_fallthrough(CfgNode* node) {
+	CGD_ASSERT(node != 0 && node->type == CFG_BLOCK);
+	return node->info.has_fallthrough;
+}
+
+static __inline__
 Bool cfgnode_has_calls(CfgNode* node) {
 	CGD_ASSERT(node != 0 && node->type == CFG_BLOCK);
-	return node->data.block->calls != 0 && CGD_(smart_list_count)(node->data.block->calls) > 0;
+	return node->data.block->calls != 0 &&
+		CGD_(smart_list_count)(node->data.block->calls) > 0;
+}
+
+static __inline__
+Bool cfgnode_has_sighandlers(CfgNode* node) {
+	CGD_ASSERT(node != 0 && node->type == CFG_BLOCK);
+	return node->data.block->sighandlers != 0 &&
+		CGD_(smart_list_count)(node->data.block->sighandlers) > 0;
 }
 
 static __inline__
@@ -1500,11 +1514,12 @@ CfgNode* CGD_(cfgnode_set_block)(CFG* cfg, CfgNode* working, BB* bb, Int group_o
 				next = new_instr_ref(CGD_(get_instr)(addr, size));
 				// Append the instruction if possible.
 				if (bb_idx > group.bb_info.first_instr && working->type == CFG_BLOCK &&
-					!cfgnode_has_successors(working) && !cfgnode_has_calls(working)) {
+						!CGD_(cfgnode_is_indirect)(working) && !cfgnode_has_successors(working) &&
+						!cfgnode_has_calls(working) && !cfgnode_has_sighandlers(working)) {
 					CGD_ASSERT((ref_instr_addr(working->data.block->instrs.tail) +
 						ref_instr_size(working->data.block->instrs.tail)) == addr);
 					add_ref2node(cfg, working, next);
-				// Create a new block, connect the working to it and
+				// Otherwise, create a new block, connect the working to it and
 				// make it the new working node.
 				} else {
 					CfgNode* node = new_cfgnode_block(cfg, next);
@@ -1844,12 +1859,15 @@ void CGD_(fix_cfg)(CFG* cfg) {
 
 		// Check if it can be merged.
 		if (node->type == CFG_BLOCK &&
-			CGD_(smart_list_count)(node->info.predecessors) == 1) {
+				CGD_(smart_list_count)(node->info.predecessors) == 1) {
 			CfgEdge* edge = (CfgEdge*) CGD_(smart_list_head)(node->info.predecessors);
 			CGD_ASSERT(edge != 0);
 
-			if (edge->src->type == CFG_BLOCK && edge->src->info.has_fallthrough &&
-				CGD_(smart_list_count)(edge->src->info.successors) == 1) {
+			if (edge->src->type == CFG_BLOCK &&
+					CGD_(smart_list_count)(edge->src->info.successors) == 1 &&
+					cfgnode_has_fallthrough(edge->src) &&
+					!CGD_(cfgnode_is_indirect)(edge->src) &&
+					!cfgnode_has_calls(edge->src) && !cfgnode_has_sighandlers(edge->src)) {
 				cfgnode_merge(cfg, edge);
 
 				--size;
