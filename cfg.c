@@ -1849,6 +1849,10 @@ void cfgnode_merge(CFG* cfg, CfgEdge* edge) {
 void CGD_(fix_cfg)(CFG* cfg) {
 	Int i, size;
 
+	// When translating to VEX IR, valgrind may create a loop
+	// for an instruction when considered its sematics.
+	// However, in practice, such back edge should not exist.
+	// Thus, let's try to remove it if it is such case.
 	i = 0;
 	size = CGD_(smart_list_count)(cfg->nodes);
 	while (i < size) {
@@ -1858,38 +1862,45 @@ void CGD_(fix_cfg)(CFG* cfg) {
 		if (node->type == CFG_BLOCK) {
 			CfgEdge* edge;
 
-			// When translating to VEX IR, valgrind may create a loop
-			// for an instruction when considered its sematics.
-			// However, in practice, such back edge should not exist.
-			// Thus, let's try to remove it if it is such case.
 			if (node->data.block->instrs.count == 1 &&
 					(edge = find_edge(node, node)) != 0) {
+				Bool removed;
 #if ENABLE_PROFILING
 				// Dismiss count for this edge.
 				edge->count = 0;
 #endif
-				remove_edge(cfg, edge->src, edge->dst);
+				removed = remove_edge(cfg, edge->src, edge->dst);
+				CGD_ASSERT(removed);
 			}
+		}
 
-			// Sometimes, a block can be created that has only a single successor and
-			// a single predecessor.
-			// This occurs because valgrind may split a superblock when it has
-			// too many instructions, or because of the situation described above.
-			// Regardless of the case, let's try to merge them.
-			if (CGD_(smart_list_count)(node->info.predecessors) == 1) {
-				edge = (CfgEdge*) CGD_(smart_list_head)(node->info.predecessors);
-				CGD_ASSERT(edge != 0);
+		i++;
+	}
 
-				if (edge->src->type == CFG_BLOCK &&
-						CGD_(smart_list_count)(edge->src->info.successors) == 1 &&
-						cfgnode_has_fallthrough(edge->src) &&
-						!CGD_(cfgnode_is_indirect)(edge->src) &&
-						!cfgnode_has_calls(edge->src) && !cfgnode_has_sighandlers(edge->src)) {
-					cfgnode_merge(cfg, edge);
+	// Sometimes, a block can be created that has only a single successor and
+	// a single predecessor.
+	// This occurs because valgrind may split a superblock when it has
+	// too many instructions, or because of the situation described above.
+	// Regardless of the case, let's try to merge them.
+	i = 0;
+	while (i < size) {
+		CfgNode* node = (CfgNode*) CGD_(smart_list_at)(cfg->nodes, i);
+		CGD_ASSERT(node != 0);
 
-					--size;
-					continue;
-				}
+		if (node->type == CFG_BLOCK &&
+				CGD_(smart_list_count)(node->info.predecessors) == 1) {
+			CfgEdge* edge = (CfgEdge*) CGD_(smart_list_head)(node->info.predecessors);
+			CGD_ASSERT(edge != 0);
+
+			if (edge->src->type == CFG_BLOCK &&
+					CGD_(smart_list_count)(edge->src->info.successors) == 1 &&
+					cfgnode_has_fallthrough(edge->src) &&
+					!CGD_(cfgnode_is_indirect)(edge->src) &&
+					!cfgnode_has_calls(edge->src) && !cfgnode_has_sighandlers(edge->src)) {
+				cfgnode_merge(cfg, edge);
+
+				--size;
+				continue;
 			}
 		}
 
@@ -2003,6 +2014,21 @@ void CGD_(check_cfg)(CFG* cfg) {
 					// The in and out degree of edges must match.
 					CGD_ASSERT(in.count == out.count);
 #endif
+
+					// If we have only a single predecessor,
+					// check if this is not an unmerged node.
+					if (in.size == 1) {
+						edge = (CfgEdge*) CGD_(smart_list_head)(node->info.predecessors);
+						CGD_ASSERT(edge != 0);
+
+						CGD_ASSERT(edge->src->type == CFG_ENTRY ||
+							(edge->src->type == CFG_BLOCK &&
+								(CGD_(smart_list_count)(edge->src->info.successors) > 1 ||
+								!cfgnode_has_fallthrough(edge->src) ||
+								CGD_(cfgnode_is_indirect)(edge->src) ||
+								cfgnode_has_calls(edge->src) ||
+								cfgnode_has_sighandlers(edge->src))));
+					}
 
 					block = node->data.block;
 					CGD_ASSERT(block != 0);
