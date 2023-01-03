@@ -7,7 +7,7 @@
    This file is part of CFGgrind, a dynamic control flow graph (CFG)
    reconstruction tool.
 
-   Copyright (C) 2022, Andrei Rimsa (andrei@cefetmg.br)
+   Copyright (C) 2023, Andrei Rimsa (andrei@cefetmg.br)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as

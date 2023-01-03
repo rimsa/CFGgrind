@@ -7,7 +7,7 @@
    This file is part of CFGgrind, a dynamic control flow graph (CFG)
    reconstruction tool.
 
-   Copyright (C) 2022, Andrei Rimsa (andrei@cefetmg.br)
+   Copyright (C) 2023, Andrei Rimsa (andrei@cefetmg.br)
 
    This tool is derived and contains lot of code from Callgrind
    Copyright (C) 2002-2017, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
@@ -860,7 +860,7 @@ void CGD_(pre_clo_init)(void) {
 	VG_(details_name)("cfggrind");
 	VG_(details_version)(NULL);
 	VG_(details_description)("a dynamic control flow graph (CFG) reconstruction tool");
-	VG_(details_copyright_author)("Copyright (C) 2022, and GNU GPL'd, "
+	VG_(details_copyright_author)("Copyright (C) 2023, and GNU GPL'd, "
 			"by Andrei Rimsa with code from Callgrind");
 	VG_(details_bug_reports_to)(VG_BUGS_TO);
 	VG_(details_avg_translation_sizeB)(500);
