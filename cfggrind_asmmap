@@ -9,25 +9,25 @@ function range() {
 	local program=$1;
 	local section=$2;
 
-	if [ "$os" == "Darwin" ]; then
+	if [ "$os" == 'Darwin' ]; then
 		local tmp=$(echo $(otool -l "${program}" 2>/dev/null | \
-			gawk -v sect="$section" '\
-				/sectname/ {if ($2 == "__"sect) { enabled=1 } else { enabled=0 }} \
-				/addr|size/ {if (enabled == 1) { print $2 }\
-			}' | sed "s/^0x0*\(.*\)$/\1/"));
-	elif [ "$os" == "Linux" ]; then
-		local tmp=$(objdump -x $1 2>/dev/null | \
+			gawk -v sect="${section}" \
+				'/sectname/ {if ($2 == "__"sect) { enabled=1 } else { enabled=0 }} \
+				 /addr|size/ {if (enabled == 1) { print $2 }}' | \
+			sed 's/^0x0*\(.*\)$/\1/'));
+	elif [ "$os" == 'Linux' ]; then
+		local tmp=$(objdump -x "${program}" 2>/dev/null | \
 			grep -i "^[[:space:]]*[[:digit:]]*[[:space:]]*\.${section}[[:space:]]" | \
 			gawk '{print $3 " " $4}' | \
-			sed "s/^0*\(.*\) 0*\(.*\)$/\2 \1/g");
+			sed 's/^0*\(.*\) 0*\(.*\)$/\2 \1/g');
 	fi
 
 	if [ -n "${tmp}" ]; then
-		start=$(echo -n $tmp | gawk '{print $1}' | tr "[[:lower:]]" "[[:upper:]]");
-		size=$(echo -n $tmp | gawk '{print $2}' | tr "[[:lower:]]" "[[:upper:]]");
+		start=$(echo -n "${tmp}" | gawk '{print $1}' | tr '[[:lower:]]' '[[:upper:]]');
+		size=$(echo -n "${tmp}" | gawk '{print $2}' | tr '[[:lower:]]' '[[:upper:]]');
 
-		echo "0x${start}:0x$(echo "obase=16;ibase=16;$start+$size" | bc -l | \
-			tr "[[:upper:]]" "[[:lower:]]")";
+		echo "0x${start}:0x$(echo "obase=16;ibase=16;${start}+${size}" | bc -l | \
+			tr '[[:upper:]]' '[[:lower:]]')";
 	fi
 }
 
@@ -35,18 +35,21 @@ function asm() {
 	local program=$1;
 	local section=$2;
 	local r=$(range "${program}" "${section}");
-	if [ -n "$r" ]; then
-		local start=${r/:*/};
-		local end=${r/*:/};
+
+	if [ -n "${r}" ]; then
+		local start="${r/:*/}";
+		local end="${r/*:/}";
 
 		if [ "$os" == "Darwin" ]; then
 			otool -V -s __TEXT "__${section}" "${program}";
 		elif [ "$os" == "Linux" ]; then
 			objdump -d -j ".${section}" --prefix-addresses "${program}" | \
-				sed "s/[[:space:]]*<[^>]*>[[:space:]]*/ /";
+				sed 's/[[:space:]]<[^>]*>[[:space:]]/ /';
 		fi | \
-			egrep "^[[:digit:]abcdef]+[[:space:]]" | \
-			sed -e "s/^[[:space:]]*0*/0x/" -e "s/[[:space:]]*#.*$//" | \
+			egrep '^[[:digit:]abcdef]+[[:space:]]' | \
+			sed 's/^[[:space:]]*0*/0x/' | \
+			sed -e 's://[[:space:]].*$::' -e 's:;[[:space:]].*$::' -e 's:#[^[:digit:]-].*$::' | \
+			sed 's/[[:space:]]*$//' | \
 			gawk -v "last=${end}" '\
 				{ \
 					naddr=tolower($1); \
