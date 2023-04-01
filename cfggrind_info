@@ -458,7 +458,8 @@ def ignore_cfg(cfg, selected_functions):
 		return False
 
 	for f in selected_functions:
-		if f in cfg.name:
+		match = re.search(r'{}'.format(f), cfg.name)
+		if match:
 			return False
 		else:
 			try:

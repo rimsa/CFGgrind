@@ -105,10 +105,12 @@ To obtain the whole program statistics, run:
       }
     }
 
-To obtain statistics for functions, enable it with _-s functions_. To display it
-for specific functions, combine with the _-f_ option.
+To obtain statistics for functions, enable it with _-s functions_. When used alone, this option
+has the effect of displaying statistics for all functions. To view statistics for specific functions,
+combine it with the _-f_ option. This option can be used with multiple function names expressed as
+regular expressions.
 
-    $ cfggrind_info -f "test::main" "test::bubble" -s functions -m json test.cfg
+    $ cfggrind_info -s functions -f "test::main" "test::bubble" -m json test.cfg
     [
         {
             cfg: 0x4006de,
