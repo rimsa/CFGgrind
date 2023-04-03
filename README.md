@@ -79,29 +79,98 @@ Update the image with the complete CFG now.
 
 The output produced by CFGgrind can be used to extract statistics information
 from a program execution.
-The statistics is provided by the **cfggrind_info** script, that can be
-configured to display information for the whole program or for functions.
-It can output the statistics in two formats: json and csv.
+The statistics is provided by **cfggrind_info**. This script that can be
+used to display information for the whole program or for functions.
+It can output the statistics in two formats: json and csv. The csv version
+does not output instructions opcode statistics.
 
 To obtain the whole program statistics, run:
 
-    $ cfggrind_info -s program -m json test.cfg
+    $ cfggrind_info -s program -i test.map -m json test.cfg
     {
-      functions: 202,
-      complete: 37,
-      incomplete: 165,
-      blocks: 2421,
-      phantoms: 801,
-      edges: 4173,
-      static: {
-        instructions: 10509,
-        calls: 314,
-        signals: 0
+      "functions": 252,
+      "complete": 28,
+      "incomplete": 224,
+      "blocks": 2872,
+      "phantoms": 990,
+      "edges": 4977,
+      "static": {
+        "instructions": {
+          "count": 13177,
+          "opcodes": {
+            "unknown": 13012,
+            "sub": 5,
+            "mov": 51,
+            "test": 1,
+            "je": 3,
+            "add": 8,
+            "ret": 7,
+            "jmp": 5,
+            "shr": 1,
+            "sar": 2,
+            "push": 16,
+            "bnd": 10,
+            "xor": 3,
+            "pop": 3,
+            "and": 1,
+            "call": 8,
+            "cmp": 6,
+            "cmpb": 1,
+            "jne": 1,
+            "movb": 1,
+            "movl": 3,
+            "jl": 4,
+            "nop": 2,
+            "cltq": 5,
+            "lea": 8,
+            "jge": 1,
+            "addl": 4,
+            "shl": 3,
+            "movslq": 1,
+            "leave": 1
+          }
+        },
+        "calls": 417,
+        "signals": 0
       },
-      dynamic: {
-        instructions: 178722,
-        calls: 949,
-        signals: 0
+      "dynamic": {
+        "instructions": {
+          "count": 148050,
+          "opcodes": {
+            "unknown": 147391,
+            "sub": 5,
+            "mov": 248,
+            "test": 1,
+            "je": 3,
+            "add": 51,
+            "ret": 7,
+            "jmp": 10,
+            "shr": 1,
+            "sar": 2,
+            "push": 16,
+            "bnd": 10,
+            "xor": 3,
+            "pop": 3,
+            "and": 1,
+            "call": 18,
+            "cmp": 58,
+            "cmpb": 1,
+            "jne": 1,
+            "movb": 1,
+            "movl": 3,
+            "jl": 42,
+            "nop": 2,
+            "cltq": 43,
+            "lea": 61,
+            "jge": 15,
+            "addl": 33,
+            "shl": 13,
+            "movslq": 6,
+            "leave": 1
+          }
+        },
+        "calls": 1113,
+        "signals": 0
       }
     }
 
@@ -110,50 +179,126 @@ has the effect of displaying statistics for all functions. To view statistics fo
 combine it with the _-f_ option. This option can be used with multiple function names expressed as
 regular expressions.
 
-    $ cfggrind_info -s functions -f "test::main" "test::bubble" -m json test.cfg
+    $ cfggrind_info -s functions -f "test::main" "test::bubble" -i test.map -m json test.cfg
     [
-        {
-            cfg: 0x4006de,
-            invoked: 1,
-            complete: true,
-            blocks: 13,
-            phantoms: 0,
-            exit: true,
-            halt: false,
-            edges: 16,
-            static: {
-                instructions: 67,
-                calls: 6,
-                signals: 0
-            },
-            dynamic: {
-                instructions: 243,
-                calls: 16,
-                signals: 0
-            },
-            name: "test::main(18)"
+      {
+        "cfg": "0x4006de",
+        "invoked": 1,
+        "complete": true,
+        "blocks": 13,
+        "phantoms": 0,
+        "exit": true,
+        "halt": false,
+        "edges": 16,
+        "static": {
+          "instructions": {
+            "count": 67,
+            "opcodes": {
+              "push": 2,
+              "mov": 30,
+              "sub": 2,
+              "cltq": 3,
+              "shl": 3,
+              "call": 6,
+              "movl": 2,
+              "jmp": 2,
+              "cmp": 2,
+              "jl": 2,
+              "lea": 6,
+              "add": 2,
+              "movslq": 1,
+              "addl": 2,
+              "leave": 1,
+              "ret": 1
+            }
+          },
+          "calls": 6,
+          "signals": 0
         },
-        {
-            cfg: 0x400607,
-            invoked: 1,
-            complete: false,
-            blocks: 8,
-            phantoms: 1,
-            exit: true,
-            halt: false,
-            edges: 12,
-            static: {
-                instructions: 35,
-                calls: 0,
-                signals: 0
-            },
-            dynamic: {
-                instructions: 348,
-                calls: 0,
-                signals: 0
-            },
-            name: "test::bubble(4)"
-        }
+        "dynamic": {
+          "instructions": {
+            "count": 248,
+            "opcodes": {
+              "push": 2,
+              "mov": 107,
+              "sub": 2,
+              "cltq": 13,
+              "shl": 13,
+              "call": 16,
+              "movl": 2,
+              "jmp": 2,
+              "cmp": 14,
+              "jl": 14,
+              "lea": 31,
+              "add": 12,
+              "movslq": 6,
+              "addl": 12,
+              "leave": 1,
+              "ret": 1
+            }
+          },
+          "calls": 16,
+          "signals": 0
+        },
+        "name": "test::main(18)"
+      },
+      {
+        "cfg": "0x400607",
+        "invoked": 1,
+        "complete": false,
+        "blocks": 8,
+        "phantoms": 1,
+        "exit": true,
+        "halt": false,
+        "edges": 12,
+        "static": {
+          "instructions": {
+            "count": 35,
+            "opcodes": {
+              "push": 1,
+              "mov": 13,
+              "movl": 1,
+              "jmp": 2,
+              "cmp": 3,
+              "jl": 2,
+              "add": 3,
+              "nop": 1,
+              "pop": 1,
+              "ret": 1,
+              "cltq": 2,
+              "lea": 2,
+              "jge": 1,
+              "addl": 2
+            }
+          },
+          "calls": 0,
+          "signals": 0
+        },
+        "dynamic": {
+          "instructions": {
+            "count": 348,
+            "opcodes": {
+              "push": 1,
+              "mov": 133,
+              "movl": 1,
+              "jmp": 7,
+              "cmp": 43,
+              "jl": 28,
+              "add": 36,
+              "nop": 1,
+              "pop": 1,
+              "ret": 1,
+              "cltq": 30,
+              "lea": 30,
+              "jge": 15,
+              "addl": 21
+            }
+          },
+          "calls": 0,
+          "signals": 0
+        },
+        "name": "test::bubble(4)"
+      }
     ]
 
 ## Output Format

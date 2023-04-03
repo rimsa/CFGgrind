@@ -2,6 +2,8 @@
 
 import re
 import sys
+import copy
+import json
 import argparse
 from enum import Enum
 
@@ -10,6 +12,9 @@ class Instr:
 		self._addr = addr
 		self._size = size
 		self._name = name
+		self._opcode = re.split(r' |\t', name)[0].lower()
+		if not self._opcode or self._opcode == '???':
+			self._opcode = 'unknown'
 
 	@property
 	def addr(self):
@@ -34,6 +39,10 @@ class Instr:
 	@name.setter
 	def name(self, name):
 		self._name = name
+
+	@property
+	def opcode(self):
+		return self._opcode
 
 	def __str__(self, dot = False):
 		if dot:
@@ -388,8 +397,8 @@ class CFGStats:
 		self._halt = False
 
 		self._edges = 0
-		self._static = { 'instrs': 0, 'calls': 0, 'signals': 0 }
-		self._dynamic = self._static.copy()
+		self._static = { 'instructions': { 'count': 0, 'opcodes': {} }, 'calls': 0, 'signals': 0 }
+		self._dynamic = copy.deepcopy(self._static)
 
 		for node in cfg.nodes:
 			t = node.type
@@ -405,7 +414,11 @@ class CFGStats:
 				assert t == NodeType.BLOCK
 				self._blocks += 1
 
-				self._static['instrs'] += len(node.instrs)
+				for instr in node.instrs:
+					self._static['instructions']['count'] += 1
+
+					self._static['instructions']['opcodes'][instr.opcode] = \
+						self._static['instructions']['opcodes'].setdefault(instr.opcode, 0) + 1
 
 				for (called_cfg, invoked) in node.calls:
 					self._static['calls'] += 1
@@ -419,7 +432,11 @@ class CFGStats:
 			self._edges += 1
 
 			if edge.dst.type == NodeType.BLOCK:
-				self._dynamic['instrs'] += len(edge.dst.instrs) * edge.invoked
+				for instr in edge.dst.instrs:
+					self._dynamic['instructions']['count'] += edge.invoked
+
+					self._dynamic['instructions']['opcodes'][instr.opcode] = \
+						self._dynamic['instructions']['opcodes'].setdefault(instr.opcode, 0) + edge.invoked
 
 	@property
 	def cfg(self):
@@ -478,99 +495,103 @@ def write_cfg(cfg, dump_dir):
 	f.close()
 
 def write_program_stats(output, stats, format):
-	functions = 0
-	complete = 0
-	incomplete = 0
-	blocks = 0
-	phantoms = 0
-	edges = 0
-	static = { 'instrs': 0, 'calls': 0, 'signals': 0 }
-	dynamic = static.copy()
+	report = {
+		'functions': 0,
+		'complete': 0,
+		'incomplete': 0,
+		'blocks': 0,
+		'phantoms': 0,
+		'edges': 0,
+		'static': {
+			'instructions': { 'count': 0, 'opcodes': {} },
+			'calls': 0,
+			'signals': 0
+		}
+	}
+	report['dynamic'] = copy.deepcopy(report['static'])
 
 	for stat in stats:
-		functions += 1
-		complete += 1 if stat.cfg.complete else 0
-		incomplete += 1 if not stat.cfg.complete else 0
-		blocks += stat.blocks
-		phantoms += stat.phantoms
-		edges += stat.edges
-		static['instrs'] += stat.static['instrs']
-		static['calls'] += stat.static['calls']
-		static['signals'] += stat.static['signals']
-		dynamic['instrs'] += stat.dynamic['instrs']
-		dynamic['calls'] += stat.dynamic['calls']
-		dynamic['signals'] += stat.dynamic['signals']
+		report['functions'] += 1
+		report['complete'] += 1 if stat.cfg.complete else 0
+		report['incomplete'] += 1 if not stat.cfg.complete else 0
+		report['blocks'] += stat.blocks
+		report['phantoms'] += stat.phantoms
+		report['edges'] += stat.edges
+
+		report['static']['instructions']['count'] += stat.static['instructions']['count']
+		for (opcode, value) in stat.static['instructions']['opcodes'].items():
+			report['static']['instructions']['opcodes'][opcode] = \
+				report['static']['instructions']['opcodes'].setdefault(opcode, 0) + value
+		report['static']['calls'] += stat.static['calls']
+		report['static']['signals'] += stat.static['signals']
+
+		report['dynamic']['instructions']['count'] += stat.dynamic['instructions']['count']
+		for (opcode, value) in stat.dynamic['instructions']['opcodes'].items():
+			report['dynamic']['instructions']['opcodes'][opcode] = \
+				report['dynamic']['instructions']['opcodes'].setdefault(opcode, 0) + value
+		report['dynamic']['calls'] += stat.dynamic['calls']
+		report['dynamic']['signals'] += stat.dynamic['signals']
 
 	if format == 'json':
-		output.write('{\n')
-		output.write('  functions: {},\n'.format(functions))
-		output.write('  complete: {},\n'.format(complete))
-		output.write('  incomplete: {},\n'.format(incomplete))
-		output.write('  blocks: {},\n'.format(blocks))
-		output.write('  phantoms: {},\n'.format(phantoms))
-		output.write('  edges: {},\n'.format(edges))
-		output.write('  static: {\n')
-		output.write('    instructions: {},\n'.format(static['instrs']))
-		output.write('    calls: {},\n'.format(static['calls']))
-		output.write('    signals: {}\n'.format(static['signals']))
-		output.write('  },\n')
-		output.write('  dynamic: {\n')
-		output.write('    instructions: {},\n'.format(dynamic['instrs']))
-		output.write('    calls: {},\n'.format(dynamic['calls']))
-		output.write('    signals: {}\n'.format(dynamic['signals']))
-		output.write('  }\n')
-		output.write('}\n')
+		output.write('{}\n'.format(json.dumps(report, indent=2)))
 	else:
 		output.write('functions,complete,incomplete,blocks,phantoms,edges,' \
 			'static_instrs,static_calls,static_signals,dynamic_instrs,' \
 			'dynamic_calls,dynamic_signals\n')
-		output.write('{},{},{},{},{},{},{},{},{},{},{},{}\n'.format(
-			functions,complete,incomplete,blocks,phantoms,edges, \
-			static['instrs'],static['calls'],static['signals'], \
-			dynamic['instrs'],dynamic['calls'],dynamic['signals']))
+		output.write('{},{},{},{},{},{},{},{},{},{},{},{}\n'.format( \
+			report['functions'],report['complete'],report['incomplete'],\
+			report['blocks'],report['phantoms'],report['edges'], \
+			report['static']['instructions']['count'],report['static']['calls'], \
+			report['static']['signals'],report['dynamic']['instructions']['count'], \
+			report['dynamic']['calls'],report['dynamic']['signals']))
 
 def write_functions_stats(output, stats, format):
+	all = []
+
+	for stat in stats:
+		report = {
+			'cfg': hex(stat.cfg.addr),
+			'invoked': stat.cfg.invoked,
+			'complete': stat.cfg.complete,
+			'blocks': stat.blocks,
+			'phantoms': stat.phantoms,
+			'exit': stat.exit,
+			'halt': stat.halt,
+			'edges': stat.edges,
+			'static': {
+				'instructions': {
+					'count': stat.static['instructions']['count'],
+					'opcodes': copy.deepcopy(stat.static['instructions']['opcodes'])
+				},
+				'calls': stat.static['calls'],
+				'signals': stat.static['signals']
+			},
+			'dynamic': {
+				'instructions': {
+					'count': stat.dynamic['instructions']['count'],
+					'opcodes': copy.deepcopy(stat.dynamic['instructions']['opcodes'])
+				},
+				'calls': stat.dynamic['calls'],
+				'signals': stat.dynamic['signals']
+			},
+			'name': stat.cfg.name
+		}
+
+		all.append(report)
+
 	if format == 'json':
-		output.write('[\n')
-		for stat in stats:
-			if stats[0] != stat:
-				output.write(',\n')
-
-			output.write('  {\n')
-			output.write('    cfg: {},\n'.format(hex(stat.cfg.addr)))
-			output.write('    invoked: {},\n'.format(stat.cfg.invoked))
-			output.write('    complete: {},\n'.format(str(stat.cfg.complete).lower()))
-			output.write('    blocks: {},\n'.format(stat.blocks))
-			output.write('    phantoms: {},\n'.format(stat.phantoms))
-			output.write('    exit: {},\n'.format(str(stat.exit).lower()))
-			output.write('    halt: {},\n'.format(str(stat.halt).lower()))
-			output.write('    edges: {},\n'.format(stat.edges))
-			output.write('    static: {\n')
-			output.write('      instructions: {},\n'.format(stat.static['instrs']))
-			output.write('      calls: {},\n'.format(stat.static['calls']))
-			output.write('      signals: {}\n'.format(stat.static['signals']))
-			output.write('    },\n')
-			output.write('    dynamic: {\n')
-			output.write('      instructions: {},\n'.format(stat.dynamic['instrs']))
-			output.write('      calls: {},\n'.format(stat.dynamic['calls']))
-			output.write('      signals: {}\n'.format(stat.dynamic['signals']))
-			output.write('    },\n')
-			output.write('    name: "{}"\n'.format(stat.cfg.name))
-			output.write('  }')
-
-		output.write('\n]\n')
+		output.write('{}\n'.format(json.dumps(all, indent=2)))
 	else:
 		output.write('cfg,invoked,complete,blocks,phantoms,exit,halt,edges,' + \
 			    		'static_instrs,static_calls,static_signals' + \
 						'dynamic_instrs,dynamic_calls,dynamic_signals,name\n')
-		for stat in stats:
+		for report in all:
 			output.write('{},{},{},{},{},{},{},{},{},{},{},{},{},{},\'{}\'\n' \
-				.format(hex(stat.cfg.addr), stat.cfg.invoked, \
-					str(stat.cfg.complete).lower(), stat.blocks, stat.phantoms, \
-					str(stat.exit).lower(), str(stat.halt).lower(), stat.edges, \
-					stat.static['instrs'], stat.static['calls'], \
-					stat.static['signals'], stat.dynamic['instrs'], \
-					stat.dynamic['calls'], stat.dynamic['signals'], stat.cfg.name))
+				.format(report['cfg'], report['invoked'], report['complete'], report['blocks'], \
+					report['phantoms'], report['exit'], report['halt'], report['edges'], \
+					report['static']['instructions']['count'], report['static']['calls'], \
+					report['static']['signals'], report['dynamic']['instructions']['count'], \
+					report['dynamic']['calls'], report['dynamic']['signals'], report['name']))
 
 def load_instructions(filename):
 	instrs = {}
