@@ -6,14 +6,14 @@ We support multi-thread programs with profiling information in the edges, calls 
 More details can be found in our [paper](paper/SPE20-cfggrind.pdf) published on Software, Practice & Experience.
 ## Building
 
-To build CFGgrind, first download and unpack valgrind (3.20.0).
+To build CFGgrind, first download and unpack valgrind (3.21.0).
 
-    $ wget -qO - https://sourceware.org/pub/valgrind/valgrind-3.20.0.tar.bz2 | tar jxv
+    $ wget -qO - https://sourceware.org/pub/valgrind/valgrind-3.21.0.tar.bz2 | tar jxv
 
 Then, enter directory and clone CFGgrind github repository.
 Apply the patch to add the tool in the compilation chain.
 
-    $ cd valgrind-3.20.0
+    $ cd valgrind-3.21.0
     $ git clone https://github.com/rimsa/CFGgrind.git cfggrind
     $ patch -p1 < cfggrind/cfggrind.patch
 
@@ -48,7 +48,8 @@ Then, use the tool to generate an output file (test.cfg) that can be used later 
 Also, generate a DOT file for the bubble function (cfg-0x{addr}.dot) with the instructions loaded from the map (test.map).
 For more information on the supported options use the --help switch.
 
-    $ valgrind --tool=cfggrind --cfg-outfile=test.cfg --instrs-map=test.map --cfg-dump=bubble ./test 4 8 15 16 23 42
+    $ valgrind -q --tool=cfggrind --cfg-outfile=test.cfg --instrs-map=test.map --cfg-dump=bubble ./test 4 8 15 16 23 42
+    4 8 15 16 23 42
 
 Generate an image from the DOT file for the bubble function.
 
@@ -65,7 +66,8 @@ Since the list used in the arguments was ordered, there is a phantom node for th
 Use the same reference input (test.cfg) in a new execution with an unordered list as argument.
 Ignore the profiling information of the previous run to account only profiling for the next execution.
 
-    $ valgrind --tool=cfggrind --cfg-infile=test.cfg --cfg-outfile=test.cfg --instrs-map=test.map --ignore-profiling=yes --cfg-dump=bubble ./test 15 4 8 42 16 23
+    $ valgrind -q --tool=cfggrind --cfg-infile=test.cfg --cfg-outfile=test.cfg --instrs-map=test.map --ignore-profiling=yes --cfg-dump=bubble ./test 15 4 8 42 16 23
+    4 8 15 16 23 42
 
 Update the image with the complete CFG now.
 
