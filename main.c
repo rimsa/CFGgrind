@@ -105,7 +105,6 @@ typedef struct {
 static InstrInfo* next_InstrInfo(CDG_State* cdgs, UInt instr_size) {
 	InstrInfo* ii;
 
-	tl_assert(cdgs->ii_index >= 0);
 	tl_assert(cdgs->ii_index < cdgs->bb->instr_count);
 	ii = &cdgs->bb->instr[cdgs->ii_index];
 
