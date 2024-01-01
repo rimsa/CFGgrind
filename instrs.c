@@ -186,7 +186,7 @@ UniqueInstr* lookup_instr(Addr addr) {
 	return instr;
 }
 
-void CGD_(init_instrs_pool)() {
+void CGD_(init_instrs_pool)(void) {
 	Int size;
 
 	pool.size = DEFAULT_POOL_SIZE;
@@ -200,7 +200,7 @@ void CGD_(init_instrs_pool)() {
 	read_instr_names();
 }
 
-void CGD_(destroy_instrs_pool)() {
+void CGD_(destroy_instrs_pool)(void) {
 	Int i;
 
 	for (i = 0; i < pool.size; i++) {

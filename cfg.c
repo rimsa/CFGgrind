@@ -1064,7 +1064,7 @@ void delete_cfg(CFG* cfg) {
 	CGD_DATA_FREE(cfg, sizeof(CFG));
 }
 
-void CGD_(init_cfg_hash)() {
+void CGD_(init_cfg_hash)(void) {
 	Int size;
 
 	cfgs.size    = 2137;
@@ -1075,7 +1075,7 @@ void CGD_(init_cfg_hash)() {
 	VG_(memset)(cfgs.table, 0, size);
 }
 
-void CGD_(destroy_cfg_hash)() {
+void CGD_(destroy_cfg_hash)(void) {
 	Int i;
 
 	for (i = 0; i < cfgs.size; i++) {

@@ -64,17 +64,17 @@ ThreadId CGD_(current_tid);
 
 static thread_info** threads;
 
-thread_info** CGD_(get_threads)()
+thread_info** CGD_(get_threads)(void)
 {
   return threads;
 }
 
-thread_info* CGD_(get_current_thread)()
+thread_info* CGD_(get_current_thread)(void)
 {
   return threads[CGD_(current_tid)];
 }
 
-void CGD_(init_threads)() {
+void CGD_(init_threads)(void) {
 	UInt i;
 
 	threads = CGD_MALLOC("cgd.threads.it.1", VG_N_THREADS * sizeof threads[0]);
@@ -125,7 +125,7 @@ void delete_thread(thread_info* t) {
 	CGD_DATA_FREE(t, sizeof(thread_info));
 }
 
-void CGD_(destroy_threads)() {
+void CGD_(destroy_threads)(void) {
 	UInt i;
 
 	for (i = 0; i < VG_N_THREADS; i++) {
@@ -223,7 +223,7 @@ void CGD_(pre_signal)(ThreadId tid, Int sigNum, Bool alt_stack)
  *
  * Called from CGD_(pop_call_stack)
  */
-void CGD_(run_post_signal_on_call_stack_bottom)()
+void CGD_(run_post_signal_on_call_stack_bottom)(void)
 {
     exec_state* es = top_exec_state();
     CGD_ASSERT(es != 0);

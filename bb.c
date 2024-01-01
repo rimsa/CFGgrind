@@ -38,7 +38,7 @@
 /* BB hash, resizable */
 bb_hash bbs;
 
-void CGD_(init_bb_hash)() {
+void CGD_(init_bb_hash)(void) {
    Int i;
 
    bbs.size    = 8437;
@@ -50,7 +50,7 @@ void CGD_(init_bb_hash)() {
 	   bbs.table[i] = NULL;
 }
 
-void CGD_(destroy_bb_hash)() {
+void CGD_(destroy_bb_hash)(void) {
 	Int i;
 	Int size;
 
@@ -76,7 +76,7 @@ void CGD_(destroy_bb_hash)() {
 	bbs.table = 0;
 }
 
-bb_hash* CGD_(get_bb_hash)()
+bb_hash* CGD_(get_bb_hash)(void)
 {
   return &bbs;
 }

@@ -300,7 +300,7 @@ static Bool search_runtime_resolve(obj_node* obj)
 /* Object hash table, fixed */
 static obj_node* obj_table[N_OBJ_ENTRIES];
 
-void CGD_(init_obj_table)() {
+void CGD_(init_obj_table)(void) {
 	Int i;
 	for (i = 0; i < N_OBJ_ENTRIES; i++)
 		obj_table[i] = 0;
@@ -353,7 +353,7 @@ void delete_obj_node(obj_node* obj) {
 	CGD_DATA_FREE(obj, sizeof(obj_node));
 }
 
-void CGD_(destroy_obj_table)() {
+void CGD_(destroy_obj_table)(void) {
 	Int i;
 
 	for (i = 0; i < N_OBJ_ENTRIES; i++) {
