@@ -1,7 +1,7 @@
 diff -urN a/Makefile.am b/Makefile.am
---- a/Makefile.am	2024-11-01 02:07:00.000000000 -0300
-+++ b/Makefile.am	2024-12-23 16:00:00.222571366 -0300
-@@ -7,6 +7,7 @@
+--- a/Makefile.am	2025-05-20 07:59:39.000000000 -0300
++++ b/Makefile.am	2025-08-06 15:28:43.622931176 -0300
+@@ -9,6 +9,7 @@
  		memcheck \
  		cachegrind \
  		callgrind \
@@ -10,9 +10,9 @@ diff -urN a/Makefile.am b/Makefile.am
  		drd \
  		massif \
 diff -urN a/configure.ac b/configure.ac
---- a/configure.ac	2024-11-01 02:07:00.000000000 -0300
-+++ b/configure.ac	2024-12-23 16:00:00.222571366 -0300
-@@ -5671,6 +5671,8 @@
+--- a/configure.ac	2025-05-20 07:59:50.000000000 -0300
++++ b/configure.ac	2025-08-06 15:28:43.626931275 -0300
+@@ -5734,6 +5734,8 @@
     callgrind/callgrind_annotate
     callgrind/callgrind_control
     callgrind/tests/Makefile

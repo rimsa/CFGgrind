@@ -6,14 +6,14 @@ We support multi-thread programs with profiling information in the edges, calls 
 More details can be found in our [paper](paper/SPE20-cfggrind.pdf) published on Software, Practice & Experience.
 ## Building
 
-To build CFGgrind, first download and unpack valgrind (3.24.0).
+To build CFGgrind, first download and unpack valgrind (3.25.1).
 
-    $ wget -qO - https://sourceware.org/pub/valgrind/valgrind-3.24.0.tar.bz2 | tar jxv
+    $ wget -qO - https://sourceware.org/pub/valgrind/valgrind-3.25.1.tar.bz2 | tar jxv
 
 Then, enter directory and clone CFGgrind github repository.
 Apply the patch to add the tool in the compilation chain.
 
-    $ cd valgrind-3.24.0
+    $ cd valgrind-3.25.1
     $ git clone https://github.com/rimsa/CFGgrind.git cfggrind
     $ patch -p1 < cfggrind/cfggrind.patch
 
